@@ -77,8 +77,7 @@ class AirAlertsMonitor:
         while True:
             try:
                 alerts_data = await self.fetch_alerts()
-                
-                # Перевіряємо формат даних - API повертає {'alerts': [...]}
+                # Перевіряємо формат даних - API повертає {'alerts': [...]} або список
                 if isinstance(alerts_data, dict) and 'alerts' in alerts_data:
                     alerts_list = alerts_data['alerts']
                 elif isinstance(alerts_data, list):
@@ -87,70 +86,73 @@ class AirAlertsMonitor:
                     logging.warning(f"Неочікуваний формат даних: {type(alerts_data)}")
                     await asyncio.sleep(interval)
                     continue
-                
-                # Фільтруємо тільки повітряні тривоги
-                alerts = []
+
+                # --- Групування по типу події та області/місту ---
+                # Ключ: (location_title, alert_type), значення: alert (dict)
+                current_alerts_dict = {}
                 for alert in alerts_list:
-                    if isinstance(alert, dict):
-                        alert_type = alert.get('alert_type', '')
-                        if alert_type == 'air_raid':
-                            alerts.append(alert)
-                
-                logging.info(f"Знайдено {len(alerts)} активних повітряних тривог")
-                
-                # Створюємо множину поточних тривог
-                current_alerts = set()
-                for alert in alerts:
-                    if isinstance(alert, dict):
-                        location_title = alert.get('location_title', '')
-                        alert_type = alert.get('alert_type', '')
-                        if location_title and alert_type:
-                            current_alerts.add((location_title, alert_type))
-                
-                # Знаходимо нові та завершені тривоги
+                    if not isinstance(alert, dict):
+                        continue
+                    alert_type = alert.get('alert_type', '')
+                    location_title = alert.get('location_title', '')
+                    finished_at = alert.get('finished_at')
+                    # Враховуємо тільки активні події
+                    if alert_type and location_title and not finished_at:
+                        current_alerts_dict[(location_title, alert_type)] = alert
+
+                current_alerts = set(current_alerts_dict.keys())
                 new_alerts = current_alerts - self.prev_alerts
                 ended_alerts = self.prev_alerts - current_alerts
-                
-                # Групуємо тривоги для масових сповіщень
-                all_ukraine, region_map = self.group_alerts(alerts)
-                
-                # Перевіряємо масові тривоги
-                if all_ukraine and not any(('Україна', 'air_raid') in self.prev_alerts for _ in [0]):
-                    await self.send_alert("🔴🚨 Повітряна тривога по всій Україні!")
-                elif not all_ukraine and any(('Україна', 'air_raid') in self.prev_alerts for _ in [0]):
-                    await self.send_alert("🟢✅ Відбій тривоги по всій Україні!")
-                else:
-                    # Перевіряємо регіональні тривоги
-                    for region, oblasts in region_map.items():
-                        if len(oblasts) == len(REGIONS[region]) and not any((region, 'air_raid') in self.prev_alerts for _ in [0]):
-                            await self.send_alert(f"🔴🚨 Повітряна тривога на {region} України!")
-                        elif len(oblasts) < len(REGIONS[region]) and any((region, 'air_raid') in self.prev_alerts for _ in [0]):
-                            await self.send_alert(f"🟢✅ Відбій тривоги на {region} України!")
-                    
-                    # Обробляємо окремі області (якщо не покриті масовими тривогами)
-                    for (location, alert_type) in new_alerts:
+
+                # --- Формування інформативних повідомлень ---
+                def format_alert_message(alert, is_end=False):
+                    alert_type = alert.get('alert_type', '')
+                    location = alert.get('location_title', '')
+                    started_at = alert.get('started_at', '')
+                    notes = alert.get('notes', '')
+                    # Короткі назви для типів подій
+                    type_map = {
+                        'air_raid': ('🚨', 'Повітряна тривога'),
+                        'mig_takeoff': ('✈️', 'Зліт МіГа'),
+                        'missile_launch': ('🚀', 'Запуск ракети'),
+                        'artillery_shelling': ('💥', 'Артобстріл'),
+                        'urban_fights': ('⚔️', 'Бої в місті'),
+                        # Додати інші типи за потреби
+                    }
+                    emoji, label = type_map.get(alert_type, ('❗', alert_type))
+                    if is_end:
                         if alert_type == 'air_raid':
-                            # Перевіряємо, чи не покрита ця область масовою тривогою
-                            is_covered = False
-                            for region, oblasts in region_map.items():
-                                if location in oblasts and len(oblasts) == len(REGIONS[region]):
-                                    is_covered = True
-                                    break
-                            if not is_covered and not all_ukraine:
-                                await self.send_alert(f"🔴🚨 Повітряна тривога! {location}")
-                    
-                    for (location, alert_type) in ended_alerts:
-                        if alert_type == 'air_raid':
-                            await self.send_alert(f"🟢✅ Відбій тривоги! {location}")
-                
-                # Оновлюємо попередній стан
+                            emoji, label = '✅', 'Відбій тривоги'
+                        else:
+                            emoji = '✅'
+                            label = f'Кінець події: {label}'
+                    msg = f"{emoji} <b>{label}</b> — {location}"
+                    if started_at and not is_end:
+                        msg += f"\nПочаток: {started_at[:16].replace('T',' ')}"
+                    if notes:
+                        msg += f"\n<i>{notes}</i>"
+                    return msg
+
+                # --- Надсилання нових подій ---
+                for key in new_alerts:
+                    alert = current_alerts_dict[key]
+                    text = format_alert_message(alert, is_end=False)
+                    await self.send_alert(text)
+
+                # --- Надсилання завершених подій ---
+                for key in ended_alerts:
+                    # Для ended_alerts у нас немає повного alert, але є (location, alert_type)
+                    location, alert_type = key
+                    fake_alert = {'alert_type': alert_type, 'location_title': location}
+                    text = format_alert_message(fake_alert, is_end=True)
+                    await self.send_alert(text)
+
                 self.prev_alerts = current_alerts
-                
+
             except Exception as e:
                 logging.error(f"Помилка моніторингу тривог: {e}")
                 import traceback
                 logging.error(f"Деталі помилки: {traceback.format_exc()}")
-            
             await asyncio.sleep(interval)
 
 # Додати у TelegramPublisher метод для простого надсилання повідомлення
