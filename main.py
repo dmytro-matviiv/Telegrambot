@@ -6,6 +6,7 @@ import random
 from datetime import datetime, timedelta
 from news_collector import NewsCollector
 from telegram_publisher import TelegramPublisher
+from air_alerts_monitor import AirAlertsMonitor
 from config import CHECK_INTERVAL, MAX_POSTS_PER_CHECK
 
 # Налаштування логування
@@ -23,6 +24,7 @@ class NewsBot:
     def __init__(self):
         self.collector = NewsCollector()
         self.publisher = TelegramPublisher()
+        self.alerts_monitor = AirAlertsMonitor(self.publisher)
         self.is_running = False
 
     async def check_and_publish_news(self):
@@ -99,6 +101,14 @@ class NewsBot:
             logger.error(f"❌ Помилка збору новин: {e}")
             return False
         
+        # Тестуємо API тривог
+        try:
+            test_alerts = await self.alerts_monitor.fetch_alerts()
+            logger.info(f"✅ API тривог працює (отримано {len(test_alerts)} активних тривог)")
+        except Exception as e:
+            logger.error(f"❌ Помилка API тривог: {e}")
+            return False
+        
         return True
 
     async def run_once(self):
@@ -109,6 +119,10 @@ class NewsBot:
         """Запускає безперервний цикл роботи бота"""
         self.is_running = True
         logger.info("🚀 Бот запущений в режимі безперервної роботи")
+        
+        # Запускаємо моніторинг тривог в окремому завданні
+        alerts_task = asyncio.create_task(self.alerts_monitor.monitor(interval=60))
+        logger.info("🚨 Моніторинг повітряних тривог запущений")
         
         while self.is_running:
             try:
@@ -121,6 +135,13 @@ class NewsBot:
             except Exception as e:
                 logger.error(f"❌ Помилка в основному циклі: {e}")
                 await asyncio.sleep(60)  # Чекаємо хвилину перед повторною спробою
+        
+        # Зупиняємо моніторинг тривог
+        alerts_task.cancel()
+        try:
+            await alerts_task
+        except asyncio.CancelledError:
+            logger.info("🚨 Моніторинг тривог зупинено")
 
     def stop(self):
         """Зупиняє бота"""
