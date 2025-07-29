@@ -78,15 +78,19 @@ class AirAlertsMonitor:
             try:
                 alerts_data = await self.fetch_alerts()
                 
-                # Перевіряємо формат даних
-                if not isinstance(alerts_data, list):
+                # Перевіряємо формат даних - API повертає {'alerts': [...]}
+                if isinstance(alerts_data, dict) and 'alerts' in alerts_data:
+                    alerts_list = alerts_data['alerts']
+                elif isinstance(alerts_data, list):
+                    alerts_list = alerts_data
+                else:
                     logging.warning(f"Неочікуваний формат даних: {type(alerts_data)}")
                     await asyncio.sleep(interval)
                     continue
                 
                 # Фільтруємо тільки повітряні тривоги
                 alerts = []
-                for alert in alerts_data:
+                for alert in alerts_list:
                     if isinstance(alert, dict):
                         alert_type = alert.get('alert_type', '')
                         if alert_type == 'air_raid':
@@ -107,15 +111,37 @@ class AirAlertsMonitor:
                 new_alerts = current_alerts - self.prev_alerts
                 ended_alerts = self.prev_alerts - current_alerts
                 
-                # Обробляємо нові тривоги
-                for (location, alert_type) in new_alerts:
-                    if alert_type == 'air_raid':
-                        await self.send_alert(f"🔴🚨 Повітряна тривога! {location}")
+                # Групуємо тривоги для масових сповіщень
+                all_ukraine, region_map = self.group_alerts(alerts)
                 
-                # Обробляємо завершені тривоги
-                for (location, alert_type) in ended_alerts:
-                    if alert_type == 'air_raid':
-                        await self.send_alert(f"🟢✅ Відбій тривоги! {location}")
+                # Перевіряємо масові тривоги
+                if all_ukraine and not any(('Україна', 'air_raid') in self.prev_alerts for _ in [0]):
+                    await self.send_alert("🔴🚨 Повітряна тривога по всій Україні!")
+                elif not all_ukraine and any(('Україна', 'air_raid') in self.prev_alerts for _ in [0]):
+                    await self.send_alert("🟢✅ Відбій тривоги по всій Україні!")
+                else:
+                    # Перевіряємо регіональні тривоги
+                    for region, oblasts in region_map.items():
+                        if len(oblasts) == len(REGIONS[region]) and not any((region, 'air_raid') in self.prev_alerts for _ in [0]):
+                            await self.send_alert(f"🔴🚨 Повітряна тривога на {region} України!")
+                        elif len(oblasts) < len(REGIONS[region]) and any((region, 'air_raid') in self.prev_alerts for _ in [0]):
+                            await self.send_alert(f"🟢✅ Відбій тривоги на {region} України!")
+                    
+                    # Обробляємо окремі області (якщо не покриті масовими тривогами)
+                    for (location, alert_type) in new_alerts:
+                        if alert_type == 'air_raid':
+                            # Перевіряємо, чи не покрита ця область масовою тривогою
+                            is_covered = False
+                            for region, oblasts in region_map.items():
+                                if location in oblasts and len(oblasts) == len(REGIONS[region]):
+                                    is_covered = True
+                                    break
+                            if not is_covered and not all_ukraine:
+                                await self.send_alert(f"🔴🚨 Повітряна тривога! {location}")
+                    
+                    for (location, alert_type) in ended_alerts:
+                        if alert_type == 'air_raid':
+                            await self.send_alert(f"🟢✅ Відбій тривоги! {location}")
                 
                 # Оновлюємо попередній стан
                 self.prev_alerts = current_alerts
