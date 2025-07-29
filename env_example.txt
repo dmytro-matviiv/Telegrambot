@@ -1,0 +1,10 @@
+# Telegram налаштування
+# Отримайте токен бота від @BotFather
+BOT_TOKEN=your_bot_token_here
+
+# ID вашого каналу (наприклад: @your_channel_name або -1001234567890)
+CHANNEL_ID=@your_channel_name
+
+# Приклади:
+# BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+# CHANNEL_ID=@ukraine_news_channel 
