@@ -100,4 +100,7 @@ DEFAULT_IMAGE_URL = 'default_ua_news.jpg'
 IMAGE_DOWNLOAD_TIMEOUT = 30
 
 # Файл для зберігання опублікованих новин
-PUBLISHED_NEWS_FILE = 'published_news.json' 
+PUBLISHED_NEWS_FILE = 'published_news.json'
+
+# Токен для API повітряних тривог (alerts.in.ua)
+ALERTS_API_TOKEN = ""  # Встав сюди свій токен, коли отримаєш 

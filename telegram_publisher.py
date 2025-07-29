@@ -9,6 +9,7 @@ import io
 import requests
 from config import BOT_TOKEN, CHANNEL_ID, DEFAULT_IMAGE_URL, MAX_TEXT_LENGTH, IMAGE_DOWNLOAD_TIMEOUT
 import random
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,13 @@ class TelegramPublisher:
 
         return text
 
+    def clean_html(self, text: str) -> str:
+        soup = BeautifulSoup(text, 'html.parser')
+        for tag in soup.find_all(True):
+            if tag.name not in ['b', 'i', 'a', 'u', 's', 'code', 'pre']:
+                tag.unwrap()
+        return str(soup)
+
     async def publish_news(self, news_item: Dict) -> bool:
         """Публікує новину в Telegram канал"""
         try:
@@ -132,23 +140,55 @@ class TelegramPublisher:
             return False
 
     async def publish_multiple_news(self, news_list: list) -> int:
-        """Публікує кілька новин з затримкою"""
         published_count = 0
-        
         for news_item in news_list:
+            # Очищення тексту від непідтримуваних тегів
+            news_item['title'] = self.clean_html(news_item.get('title', ''))
+            news_item['description'] = self.clean_html(news_item.get('description', ''))
+            news_item['full_text'] = self.clean_html(news_item.get('full_text', ''))
+            text = self.format_news_text(news_item)
+            text = self.clean_html(text)
+            image_url = news_item.get('image_url', '')
+            image_data = await self.download_image(image_url)
+            if not image_data:
+                image_data = await self.download_image(DEFAULT_IMAGE_URL)
             try:
-                success = await self.publish_news(news_item)
-                if success:
-                    published_count += 1
-                
-                # Затримка між публікаціями (щоб не спамити)
-                await asyncio.sleep(30)
-                
+                if image_data:
+                    await self.bot.send_photo(
+                        chat_id=CHANNEL_ID,
+                        photo=image_data,
+                        caption=text,
+                        parse_mode='HTML'
+                    )
+                    logger.info(f"Опубліковано новину з зображенням: {news_item.get('title', '')[:50]}...")
+                else:
+                    await self.bot.send_message(
+                        chat_id=CHANNEL_ID,
+                        text=text,
+                        parse_mode='HTML',
+                        disable_web_page_preview=False
+                    )
+                    logger.info(f"Опубліковано новину без зображення: {news_item.get('title', '')[:50]}...")
+                published_count += 1
+                break  # Публікуємо лише одну успішну новину за раз
             except Exception as e:
-                logger.error(f"Помилка при публікації новини: {e}")
-                continue
-        
+                logger.error(f"Помилка Telegram при публікації: {e}")
+                continue  # Якщо помилка — пробуємо наступну новину
         return published_count
+
+    async def send_simple_message(self, text: str) -> bool:
+        try:
+            await self.bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=text,
+                parse_mode='HTML',
+                disable_web_page_preview=True
+            )
+            logger.info(f"Сповіщення надіслано: {text[:50]}...")
+            return True
+        except Exception as e:
+            logger.error(f"Помилка при надсиланні сповіщення: {e}")
+            return False
 
     async def test_connection(self) -> bool:
         """Тестує з'єднання з Telegram"""
