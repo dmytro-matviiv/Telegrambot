@@ -4,6 +4,7 @@ import logging
 import os
 from config import ALERTS_API_TOKEN, CHANNEL_ID
 from telegram_publisher import TelegramPublisher
+import datetime
 
 # Макрорегіони України
 REGIONS = {
@@ -96,8 +97,9 @@ class AirAlertsMonitor:
                     alert_type = alert.get('alert_type', '')
                     location_title = alert.get('location_title', '')
                     finished_at = alert.get('finished_at')
-                    # Враховуємо тільки активні події
-                    if alert_type and location_title and not finished_at:
+                    started_at = alert.get('started_at', '')
+                    # Враховуємо тільки активні події air_raid
+                    if alert_type == 'air_raid' and location_title and not finished_at:
                         current_alerts_dict[(location_title, alert_type)] = alert
 
                 current_alerts = set(current_alerts_dict.keys())
@@ -106,44 +108,38 @@ class AirAlertsMonitor:
 
                 # --- Формування інформативних повідомлень ---
                 def format_alert_message(alert, is_end=False):
-                    alert_type = alert.get('alert_type', '')
                     location = alert.get('location_title', '')
                     started_at = alert.get('started_at', '')
-                    notes = alert.get('notes', '')
-                    # Короткі назви для типів подій
-                    type_map = {
-                        'air_raid': ('🚨', 'Повітряна тривога'),
-                        'mig_takeoff': ('✈️', 'Зліт МіГа'),
-                        'missile_launch': ('🚀', 'Запуск ракети'),
-                        'artillery_shelling': ('💥', 'Артобстріл'),
-                        'urban_fights': ('⚔️', 'Бої в місті'),
-                        # Додати інші типи за потреби
-                    }
-                    emoji, label = type_map.get(alert_type, ('❗', alert_type))
                     if is_end:
-                        if alert_type == 'air_raid':
-                            emoji, label = '✅', 'Відбій тривоги'
-                        else:
-                            emoji = '✅'
-                            label = f'Кінець події: {label}'
-                    msg = f"{emoji} <b>{label}</b> — {location}"
-                    if started_at and not is_end:
+                        return f"✅ <b>Відбій тривоги</b> — {location}"
+                    msg = f"🚨 <b>Повітряна тривога</b> — {location}"
+                    if started_at:
                         msg += f"\nПочаток: {started_at[:16].replace('T',' ')}"
-                    if notes:
-                        msg += f"\n<i>{notes}</i>"
                     return msg
 
-                # --- Надсилання нових подій ---
+                # --- Надсилання нових подій (тільки якщо почались не більше 2 хвилин тому) ---
+                now = datetime.datetime.utcnow()
                 for key in new_alerts:
                     alert = current_alerts_dict[key]
+                    started_at = alert.get('started_at', '')
+                    # Перевіряємо, чи тривога не стара
+                    if started_at:
+                        try:
+                            started_dt = datetime.datetime.strptime(started_at[:19], "%Y-%m-%dT%H:%M:%S")
+                        except Exception:
+                            continue
+                        delta = (now - started_dt).total_seconds() / 60
+                        if delta > 2:
+                            continue  # Не надсилати старі тривоги
                     text = format_alert_message(alert, is_end=False)
                     await self.send_alert(text)
 
                 # --- Надсилання завершених подій ---
                 for key in ended_alerts:
-                    # Для ended_alerts у нас немає повного alert, але є (location, alert_type)
                     location, alert_type = key
-                    fake_alert = {'alert_type': alert_type, 'location_title': location}
+                    if alert_type != 'air_raid':
+                        continue
+                    fake_alert = {'location_title': location}
                     text = format_alert_message(fake_alert, is_end=True)
                     await self.send_alert(text)
 
