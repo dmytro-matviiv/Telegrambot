@@ -91,7 +91,7 @@ NEWS_SOURCES = {
 }
 
 # Налаштування збору новин
-CHECK_INTERVAL = 1000  # секунди (5 хвилин)
+CHECK_INTERVAL = 2500  # секунди (5 хвилин)
 MAX_POSTS_PER_CHECK = 1
 MAX_TEXT_LENGTH = 4000
 
