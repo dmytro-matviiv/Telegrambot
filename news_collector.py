@@ -72,17 +72,54 @@ class NewsCollector:
                 lang = entry.get('language') or entry.get('lang') or entry.get('dc_language')
                 title = entry.get('title', '')
                 summary = entry.get('summary', '')
+                
+                # Для міжнародних джерел дозволяємо англійську мову
+                source_key_lower = source_key.lower()
+                is_international_source = any(keyword in source_key_lower for keyword in ['bbc', 'reuters', 'cnn', 'ap', 'guardian', 'nyt', 'washington', 'al_jazeera', 'dw', 'defense', 'war_zone'])
+                
                 # Дуже простий Heuristic: якщо явно не вказано lang, перевірити наявність українських літер
                 def is_ukrainian(text):
                     ukr_letters = set('іїєґІЇЄҐ')
                     return any(c in ukr_letters for c in text)
-                if lang and not lang.startswith('uk'):
-                    logger.info(f"⏩ Пропускаємо новину: не українською мовою (lang={lang})")
-                    continue
-                if not lang and not (is_ukrainian(title) or is_ukrainian(summary)):
-                    logger.info(f"⏩ Пропускаємо новину: не схожа на українську (title/summary)")
-                    continue
+                
+                def is_english(text):
+                    # Проста перевірка на англійську мову
+                    common_english_words = ['the', 'and', 'for', 'with', 'this', 'that', 'will', 'have', 'been', 'from', 'they', 'said', 'time', 'people', 'year', 'into', 'just', 'over', 'think', 'also', 'around', 'another', 'come', 'work', 'first', 'well', 'way', 'even', 'want', 'because', 'any', 'these', 'give', 'day', 'most', 'us']
+                    text_lower = text.lower()
+                    english_word_count = sum(1 for word in common_english_words if word in text_lower)
+                    return english_word_count >= 3
+                
+                # Для міжнародних джерел дозволяємо англійську
+                if is_international_source:
+                    if lang and not (lang.startswith('uk') or lang.startswith('en')):
+                        logger.info(f"⏩ Пропускаємо новину: не українською/англійською мовою (lang={lang})")
+                        continue
+                    if not lang and not (is_ukrainian(title) or is_ukrainian(summary) or is_english(title) or is_english(summary)):
+                        logger.info(f"⏩ Пропускаємо новину: не схожа на українську/англійську (title/summary)")
+                        continue
+                else:
+                    # Для українських джерел тільки українська
+                    if lang and not lang.startswith('uk'):
+                        logger.info(f"⏩ Пропускаємо новину: не українською мовою (lang={lang})")
+                        continue
+                    if not lang and not (is_ukrainian(title) or is_ukrainian(summary)):
+                        logger.info(f"⏩ Пропускаємо новину: не схожа на українську (title/summary)")
+                        continue
                 # --- Кінець фільтрації мови ---
+                
+                # Фільтрація за ключовими словами для міжнародних джерел
+                if is_international_source:
+                    ukraine_keywords = ['ukraine', 'ukrainian', 'kyiv', 'kiev', 'donetsk', 'luhansk', 'crimea', 'russia', 'russian', 'putin', 'zelensky', 'war', 'conflict', 'invasion', 'military', 'defense', 'weapons', 'sanctions']
+                    title_lower = title.lower()
+                    summary_lower = summary.lower()
+                    
+                    # Перевіряємо чи є ключові слова в заголовку або описі
+                    has_ukraine_keywords = any(keyword in title_lower or keyword in summary_lower for keyword in ukraine_keywords)
+                    
+                    if not has_ukraine_keywords:
+                        logger.info(f"⏩ Пропускаємо міжнародну новину: немає ключових слів про Україну/війну")
+                        continue
+                
                 published = entry.get('published_parsed', None) or entry.get('updated_parsed', None)
                 if not published:
                     continue

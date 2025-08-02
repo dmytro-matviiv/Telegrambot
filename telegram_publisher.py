@@ -81,7 +81,14 @@ class TelegramPublisher:
         #     text_parts.append(f"\n🔗 Читати повністю: {link}")
 
         # Хештеги
-        hashtags = ["#Україна", "#Новини", "#Офіційно", "#Важливо", "#ГарячіНовини", "#UAnews", "#Ukraine", "#BreakingNews"]
+        source_key = news_item.get('source_key', '').lower()
+        is_international = any(keyword in source_key for keyword in ['bbc', 'reuters', 'cnn', 'ap', 'guardian', 'nyt', 'washington', 'al_jazeera', 'dw', 'defense', 'war_zone'])
+        
+        if is_international:
+            hashtags = ["#Ukraine", "#War", "#BreakingNews", "#International", "#WorldNews", "#Conflict", "#Military", "#Defense", "#Russia", "#Zelensky"]
+        else:
+            hashtags = ["#Україна", "#Новини", "#Офіційно", "#Важливо", "#ГарячіНовини", "#UAnews", "#Ukraine", "#BreakingNews"]
+        
         random.shuffle(hashtags)
         text_parts.append(f"\n\n{' '.join(hashtags[:3])} {end_emoji}")
 

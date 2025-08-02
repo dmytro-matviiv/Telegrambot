@@ -15,79 +15,91 @@ NEWS_SOURCES = {
         'rss': 'https://tsn.ua/rss',
         'website': 'https://tsn.ua/'
     },
-    # Новини про війну
+    # Новини про війну в Україні
     'pravda_war': {
         'name': 'Українська правда (Війна)',
         'rss': 'https://www.pravda.com.ua/rss/',
         'website': 'https://www.pravda.com.ua/rus/news/'
     },
-    # Шоу-бізнес та зірки
-    'tabloid': {
-        'name': 'ТаблоID (зірки, шоу-бізнес)',
-        'rss': 'https://tabloid.pravda.com.ua/rss/',
-        'website': 'https://tabloid.pravda.com.ua/'
+    # Всесвітні новини
+    'bbc_world': {
+        'name': 'BBC World News',
+        'rss': 'https://feeds.bbci.co.uk/news/world/rss.xml',
+        'website': 'https://www.bbc.com/news/world'
     },
-    # Регіональні новини
-    'kharkiv': {
-        'name': 'Харківські новини',
-        'rss': 'https://www.objectiv.tv/rss/',
-        'website': 'https://www.objectiv.tv/'
+    'reuters_world': {
+        'name': 'Reuters World',
+        'rss': 'https://feeds.reuters.com/Reuters/worldNews',
+        'website': 'https://www.reuters.com/world/'
     },
-    'odesa': {
-        'name': 'Одеські новини',
-        'rss': 'https://odessa.online/feed/',
-        'website': 'https://odessa.online/'
+    'cnn_world': {
+        'name': 'CNN World',
+        'rss': 'https://rss.cnn.com/rss/edition_world.rss',
+        'website': 'https://www.cnn.com/world'
     },
-    'dnipro': {
-        'name': 'Дніпровські новини',
-        'rss': 'https://dnipro.tv/feed/',
-        'website': 'https://dnipro.tv/'
+    'ap_world': {
+        'name': 'Associated Press World',
+        'rss': 'https://feeds.feedburner.com/APWorldNews',
+        'website': 'https://apnews.com/hub/world-news'
     },
-    'zaporizhzhia': {
-        'name': 'Запорізькі новини',
-        'rss': 'https://akzent.zp.ua/feed/',
-        'website': 'https://akzent.zp.ua/'
+    # Новини про війну та безпеку
+    'defense_news': {
+        'name': 'Defense News',
+        'rss': 'https://www.defensenews.com/rss/feed',
+        'website': 'https://www.defensenews.com/'
     },
-    'vinnytsia': {
-        'name': 'Вінницькі новини',
-        'rss': 'https://vezha.ua/feed/',
-        'website': 'https://vezha.ua/'
+    'war_zone': {
+        'name': 'The War Zone',
+        'rss': 'https://www.thedrive.com/the-war-zone/rss',
+        'website': 'https://www.thedrive.com/the-war-zone'
     },
-    'chernihiv': {
-        'name': 'Чернігівські новини',
-        'rss': 'https://cheline.com.ua/feed',
-        'website': 'https://cheline.com.ua/'
+    # Українські новини про війну
+    'ukrinform': {
+        'name': 'Укрінформ',
+        'rss': 'https://www.ukrinform.ua/rss',
+        'website': 'https://www.ukrinform.ua/'
     },
-    'kherson': {
-        'name': 'Херсонські новини',
-        'rss': 'https://most.ks.ua/feed/',
-        'website': 'https://most.ks.ua/'
+    'unian_war': {
+        'name': 'УНІАН (Війна)',
+        'rss': 'https://www.unian.ua/rss/war.rss',
+        'website': 'https://www.unian.ua/war'
     },
-    'ivano_frankivsk': {
-        'name': 'Івано-Франківські новини',
-        'rss': 'https://galka.if.ua/feed/',
-        'website': 'https://galka.if.ua/'
+    'hromadske': {
+        'name': 'Громадське',
+        'rss': 'https://hromadske.ua/rss',
+        'website': 'https://hromadske.ua/'
     },
-    'zhytomyr': {
-        'name': 'Житомирські новини',
-        'rss': 'https://zhitomir-online.com/rss.xml',
-        'website': 'https://zhitomir-online.com/'
+    'nv_war': {
+        'name': 'НВ (Війна)',
+        'rss': 'https://nv.ua/rss/war.rss',
+        'website': 'https://nv.ua/ukr/war'
     },
-    'rivne': {
-        'name': 'Рівненські новини',
-        'rss': 'https://rivnepost.rv.ua/rss',
-        'website': 'https://rivnepost.rv.ua/'
+    # Міжнародні новини про Україну
+    'guardian_ukraine': {
+        'name': 'The Guardian (Україна)',
+        'rss': 'https://www.theguardian.com/world/ukraine/rss',
+        'website': 'https://www.theguardian.com/world/ukraine'
     },
-    'cherkasy': {
-        'name': 'Черкаські новини',
-        'rss': 'https://procherk.info/rss',
-        'website': 'https://procherk.info/'
+    'nyt_ukraine': {
+        'name': 'New York Times (Україна)',
+        'rss': 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
+        'website': 'https://www.nytimes.com/topic/destination/ukraine'
     },
-    'pravda': {
-        'name': 'Українська правда',
-        'rss': 'https://www.pravda.com.ua/rss/',
-        'website': 'https://www.pravda.com.ua/'
+    'washington_post_world': {
+        'name': 'Washington Post World',
+        'rss': 'https://feeds.washingtonpost.com/rss/world',
+        'website': 'https://www.washingtonpost.com/world/'
     },
+    'al_jazeera_world': {
+        'name': 'Al Jazeera World',
+        'rss': 'https://www.aljazeera.com/xml/rss/all.xml',
+        'website': 'https://www.aljazeera.com/news/'
+    },
+    'dw_world': {
+        'name': 'Deutsche Welle World',
+        'rss': 'https://rss.dw.com/xml/rss-de-all',
+        'website': 'https://www.dw.com/en/top-stories/world/s-1007'
+    }
 }
 
 # Налаштування збору новин

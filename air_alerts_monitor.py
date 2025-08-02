@@ -26,6 +26,12 @@ REGIONS = {
     ]
 }
 
+# Окуповані території та зони бойових дій (не показувати тривоги)
+OCCUPIED_AND_COMBAT_AREAS = {
+    'Донецька область', 'Луганська область', 'АР Крим', 'Автономна Республіка Крим',
+    'Херсонська область', 'Запорізька область', 'Харківська область'
+}
+
 API_URL = "https://api.alerts.in.ua/v1/alerts/active.json"
 
 class AirAlertsMonitor:
@@ -51,14 +57,36 @@ class AirAlertsMonitor:
                     logging.error(f"Помилка при запиті до alerts.in.ua: {resp.status}")
                     return []
 
+    def is_valid_alert(self, alert):
+        """Перевіряє чи тривога повинна бути показана"""
+        if not isinstance(alert, dict):
+            return False
+            
+        location_title = alert.get('location_title', '')
+        location_type = alert.get('location_type', '')
+        alert_type = alert.get('alert_type', '')
+        
+        # Показувати тільки повітряні тривоги
+        if alert_type != 'air_raid':
+            return False
+            
+        # Показувати тільки тривоги по областях (не по громадах, містах, тощо)
+        if location_type != 'oblast':
+            return False
+            
+        # Не показувати тривоги в окупованих територіях та зонах бойових дій
+        if location_title in OCCUPIED_AND_COMBAT_AREAS:
+            return False
+            
+        return True
+
     def group_alerts(self, alerts):
         # Повертає: (all_ukraine, {region: [області]})
         oblasts = []
         for alert in alerts:
-            if isinstance(alert, dict):
+            if self.is_valid_alert(alert):
                 location_title = alert.get('location_title', '')
-                location_type = alert.get('location_type', '')
-                if location_type == 'oblast' and location_title:
+                if location_title:
                     oblasts.append(location_title)
         
         if len(oblasts) >= 24:
@@ -92,14 +120,15 @@ class AirAlertsMonitor:
                 # Ключ: (location_title, alert_type), значення: alert (dict)
                 current_alerts_dict = {}
                 for alert in alerts_list:
-                    if not isinstance(alert, dict):
+                    if not self.is_valid_alert(alert):
                         continue
-                    alert_type = alert.get('alert_type', '')
+                        
                     location_title = alert.get('location_title', '')
+                    alert_type = alert.get('alert_type', '')
                     finished_at = alert.get('finished_at')
                     started_at = alert.get('started_at', '')
                     # Враховуємо тільки активні події air_raid
-                    if alert_type == 'air_raid' and location_title and not finished_at:
+                    if location_title and not finished_at:
                         current_alerts_dict[(location_title, alert_type)] = alert
 
                 current_alerts = set(current_alerts_dict.keys())
