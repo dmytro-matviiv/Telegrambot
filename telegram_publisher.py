@@ -34,6 +34,22 @@ class TelegramPublisher:
             logger.error(f"Помилка при завантаженні зображення: {e}")
             return None
 
+    async def download_video(self, video_url: str) -> Optional[bytes]:
+        """Завантажує відео з URL"""
+        try:
+            if not video_url:
+                return None
+                
+            async with self.session.get(video_url, timeout=30) as response:
+                if response.status == 200:
+                    return await response.read()
+                else:
+                    logger.warning(f"Не вдалося завантажити відео: {response.status}")
+                    return None
+        except Exception as e:
+            logger.error(f"Помилка при завантаженні відео: {e}")
+            return None
+
     def format_news_text(self, news_item: Dict) -> str:
         """Форматує текст новини для публікації"""
         title = news_item.get('title', '')
@@ -111,6 +127,25 @@ class TelegramPublisher:
         """Публікує новину в Telegram канал"""
         try:
             text = self.format_news_text(news_item)
+            
+            # Перевіряємо чи є відео
+            video_url = news_item.get('video_url', '')
+            video_data = None
+            if video_url:
+                video_data = await self.download_video(video_url)
+            
+            # Якщо є відео, публікуємо його
+            if video_data:
+                await self.bot.send_video(
+                    chat_id=CHANNEL_ID,
+                    video=video_data,
+                    caption=text,
+                    parse_mode='HTML'
+                )
+                logger.info(f"Опубліковано новину з відео: {news_item.get('title', '')[:50]}...")
+                return True
+            
+            # Якщо немає відео, публікуємо з зображенням
             image_url = news_item.get('image_url', '')
             image_data = await self.download_image(image_url)
 
@@ -155,27 +190,47 @@ class TelegramPublisher:
             news_item['full_text'] = self.clean_html(news_item.get('full_text', ''))
             text = self.format_news_text(news_item)
             text = self.clean_html(text)
-            image_url = news_item.get('image_url', '')
-            image_data = await self.download_image(image_url)
-            if not image_data:
-                image_data = await self.download_image(DEFAULT_IMAGE_URL)
+            
+            # Перевіряємо чи є відео
+            video_url = news_item.get('video_url', '')
+            video_data = None
+            if video_url:
+                video_data = await self.download_video(video_url)
+            
             try:
-                if image_data:
-                    await self.bot.send_photo(
+                # Якщо є відео, публікуємо його
+                if video_data:
+                    await self.bot.send_video(
                         chat_id=CHANNEL_ID,
-                        photo=image_data,
+                        video=video_data,
                         caption=text,
                         parse_mode='HTML'
                     )
-                    logger.info(f"Опубліковано новину з зображенням: {news_item.get('title', '')[:50]}...")
+                    logger.info(f"Опубліковано новину з відео: {news_item.get('title', '')[:50]}...")
                 else:
-                    await self.bot.send_message(
-                        chat_id=CHANNEL_ID,
-                        text=text,
-                        parse_mode='HTML',
-                        disable_web_page_preview=False
-                    )
-                    logger.info(f"Опубліковано новину без зображення: {news_item.get('title', '')[:50]}...")
+                    # Якщо немає відео, публікуємо з зображенням
+                    image_url = news_item.get('image_url', '')
+                    image_data = await self.download_image(image_url)
+                    if not image_data:
+                        image_data = await self.download_image(DEFAULT_IMAGE_URL)
+                    
+                    if image_data:
+                        await self.bot.send_photo(
+                            chat_id=CHANNEL_ID,
+                            photo=image_data,
+                            caption=text,
+                            parse_mode='HTML'
+                        )
+                        logger.info(f"Опубліковано новину з зображенням: {news_item.get('title', '')[:50]}...")
+                    else:
+                        await self.bot.send_message(
+                            chat_id=CHANNEL_ID,
+                            text=text,
+                            parse_mode='HTML',
+                            disable_web_page_preview=False
+                        )
+                        logger.info(f"Опубліковано новину без зображення: {news_item.get('title', '')[:50]}...")
+                
                 published_count += 1
                 break  # Публікуємо лише одну успішну новину за раз
             except Exception as e:

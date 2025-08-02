@@ -90,31 +90,63 @@ async def test_alerts_logic():
     
     logger.info(f"📊 Результат: {valid_count}/{len(test_alerts)} тривог пройшли фільтрацію")
     
-    # Тестуємо отримання реальних даних
+    # Тестуємо отримання реальних даних з API
     logger.info("🔍 Тестуємо отримання реальних даних з API...")
-    try:
-        alerts_data = await monitor.fetch_alerts()
-        if alerts_data:
-            logger.info(f"✅ Отримано дані з API")
-            if isinstance(alerts_data, dict) and 'alerts' in alerts_data:
-                alerts_list = alerts_data['alerts']
-            elif isinstance(alerts_data, list):
-                alerts_list = alerts_data
-            else:
-                alerts_list = []
-            
-            # Фільтруємо тривоги
-            valid_alerts = [alert for alert in alerts_list if monitor.is_valid_alert(alert)]
-            logger.info(f"📊 Знайдено {len(alerts_list)} тривог, {len(valid_alerts)} пройшли фільтрацію")
-            
-            if valid_alerts:
-                logger.info("✅ Активні тривоги після фільтрації:")
-                for alert in valid_alerts[:5]:  # Показуємо перші 5
-                    logger.info(f"   - {alert.get('location_title', 'Невідомо')}")
+    alerts_data = await monitor.fetch_alerts()
+    if alerts_data:
+        logger.info("✅ Отримано дані з API")
+        
+        # Аналізуємо всі типи локацій
+        location_types = set()
+        location_titles = set()
+        for alert in alerts_data.get('alerts', []):
+            location_type = alert.get('location_type', '')
+            location_title = alert.get('location_title', '')
+            location_types.add(location_type)
+            location_titles.add(location_title)
+        
+        logger.info(f"📊 Знайдено {len(alerts_data.get('alerts', []))} тривог")
+        logger.info(f"🔍 Типи локацій в API: {sorted(location_types)}")
+        logger.info(f"🔍 Приклади назв локацій: {sorted(list(location_titles)[:10])}")
+        
+        # Перевіряємо чи є тривоги з "район" в назві
+        district_alerts = []
+        for alert in alerts_data.get('alerts', []):
+            location_title = alert.get('location_title', '')
+            location_type = alert.get('location_type', '')
+            alert_type = alert.get('alert_type', '')
+            if 'район' in location_title.lower():
+                district_alerts.append({
+                    'title': location_title,
+                    'type': location_type,
+                    'alert_type': alert_type
+                })
+        
+        if district_alerts:
+            logger.info(f"⚠️ Знайдено {len(district_alerts)} тривог з 'район' в назві:")
+            for alert in district_alerts:
+                logger.info(f"    - {alert['title']} (тип: {alert['type']}, тривога: {alert['alert_type']})")
         else:
-            logger.warning("⚠️ Дані з API не отримано")
-    except Exception as e:
-        logger.error(f"❌ Помилка при отриманні даних з API: {e}")
+            logger.info("✅ Тривог з 'район' в назві не знайдено")
+        
+        # Фільтруємо тривоги
+        valid_alerts = []
+        for alert in alerts_data.get('alerts', []):
+            if monitor.is_valid_alert(alert):
+                valid_alerts.append(alert)
+        
+        logger.info(f"📊 Знайдено {len(alerts_data.get('alerts', []))} тривог, {len(valid_alerts)} пройшли фільтрацію")
+        if valid_alerts:
+            logger.info("✅ Активні тривоги після фільтрації:")
+            for alert in valid_alerts:
+                location = alert.get('location_title', '')
+                location_type = alert.get('location_type', '')
+                alert_type = alert.get('alert_type', '')
+                logger.info(f"    - {location} (тип: {location_type}, тривога: {alert_type})")
+        else:
+            logger.info("❌ Немає активних тривог після фільтрації")
+    else:
+        logger.error("❌ Не вдалося отримати дані з API")
     
     await publisher.close()
 

@@ -1,3 +1,5 @@
+import asyncio
+import aiohttp
 import feedparser
 import requests
 from bs4 import BeautifulSoup
@@ -7,6 +9,8 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 import logging
 from config import NEWS_SOURCES, PUBLISHED_NEWS_FILE, DEFAULT_IMAGE_URL
+import re
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,6 +39,71 @@ class NewsCollector:
         }
         with open(PUBLISHED_NEWS_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def translate_text(self, text, source_lang='en', target_lang='uk'):
+        """Простий переклад ключових слів з англійської на українську"""
+        try:
+            if not text or len(text.strip()) < 10:
+                return text
+            
+            # Простий словник перекладів для ключових слів
+            translations = {
+                'ukraine': 'Україна',
+                'ukrainian': 'український',
+                'russia': 'Росія',
+                'russian': 'російський',
+                'war': 'війна',
+                'conflict': 'конфлікт',
+                'invasion': 'вторгнення',
+                'military': 'військовий',
+                'defense': 'оборона',
+                'weapons': 'зброя',
+                'sanctions': 'санкції',
+                'zelensky': 'Зеленський',
+                'putin': 'Путін',
+                'kyiv': 'Київ',
+                'kiev': 'Київ',
+                'donetsk': 'Донецьк',
+                'luhansk': 'Луганськ',
+                'crimea': 'Крим',
+                'breaking': 'терміново',
+                'news': 'новини',
+                'latest': 'останні',
+                'update': 'оновлення',
+                'report': 'звіт',
+                'says': 'каже',
+                'said': 'сказав',
+                'will': 'буде',
+                'has': 'має',
+                'have': 'мають',
+                'is': 'є',
+                'are': 'є',
+                'was': 'був',
+                'were': 'були'
+            }
+            
+            translated_text = text
+            for eng_word, ukr_word in translations.items():
+                # Замінюємо слова з урахуванням регістру
+                translated_text = re.sub(r'\b' + re.escape(eng_word) + r'\b', ukr_word, translated_text, flags=re.IGNORECASE)
+            
+            return translated_text
+        except Exception as e:
+            logging.warning(f"Помилка перекладу: {e}")
+            return text
+
+    def is_english_text(self, text):
+        """Перевіряє чи текст англійською мовою"""
+        if not text:
+            return False
+        
+        # Прості індикатори англійської мови
+        english_indicators = ['the', 'and', 'for', 'with', 'this', 'that', 'will', 'have', 'been', 'from', 'they', 'said', 'news', 'latest', 'breaking', 'report', 'says', 'said', 'ukraine', 'russia', 'war', 'military', 'defense', 'zelensky', 'putin']
+        text_lower = text.lower()
+        english_count = sum(1 for word in english_indicators if word in text_lower)
+        
+        # Якщо знайдено більше 1 англійського слова, вважаємо текст англійським
+        return english_count >= 1
 
     def get_news_from_rss(self, source_key: str, source_info: Dict) -> List[Dict]:
         try:
@@ -129,6 +198,7 @@ class NewsCollector:
                     return []
                 full_text = self.get_full_article_text(entry.get('link', ''))
                 image_url = self.extract_image_url(entry, entry.get('link', ''))
+                video_url = self.extract_video_url(entry, entry.get('link', ''))
                 # --- Перевірка якості фото ---
                 if image_url:
                     try:
@@ -146,6 +216,24 @@ class NewsCollector:
                 else:
                     image_url = DEFAULT_IMAGE_URL
                 # --- Кінець перевірки якості фото ---
+                
+                # --- Переклад англійських новин ---
+                is_international_source = any(keyword in source_key.lower() for keyword in ['bbc', 'reuters', 'cnn', 'ap', 'guardian', 'nyt', 'washington', 'al_jazeera', 'dw', 'defense', 'war_zone'])
+                
+                if is_international_source and self.is_english_text(title):
+                    logger.info(f"🔄 Перекладаємо заголовок з англійської на українську")
+                    translated_title = self.translate_text(title)
+                    if translated_title != title:
+                        title = translated_title
+                
+                if is_international_source and self.is_english_text(summary):
+                    logger.info(f"🔄 Перекладаємо опис з англійської на українську")
+                    translated_summary = self.translate_text(summary)
+                    if translated_summary != summary:
+                        summary = translated_summary
+                
+                # --- Кінець перекладу ---
+                
                 news_item = {
                     'id': news_id,
                     'title': title,
@@ -153,6 +241,7 @@ class NewsCollector:
                     'full_text': full_text,
                     'link': entry.get('link', ''),
                     'image_url': image_url,
+                    'video_url': video_url,
                     'source': source_info['name'],
                     'source_key': source_key,
                     'published': entry.get('published', ''),
@@ -242,6 +331,61 @@ class NewsCollector:
                             return src
         except Exception as e:
             logger.error(f"❌ Помилка при витягуванні зображення: {e}")
+        return ""
+
+    def extract_video_url(self, entry, article_url: str) -> str:
+        """Витягує URL відео з новини"""
+        try:
+            # Перевіряємо медіа контент на відео
+            if hasattr(entry, 'media_content') and entry.media_content:
+                for media in entry.media_content:
+                    if media.get('type', '').startswith('video/'):
+                        return media['url']
+
+            # Перевіряємо опис на відео теги
+            if entry.get('summary'):
+                soup = BeautifulSoup(entry['summary'], 'html.parser')
+                video = soup.find('video')
+                if video and video.get('src'):
+                    return video['src']
+                
+                # Перевіряємо iframe з відео (YouTube, Vimeo, тощо)
+                iframe = soup.find('iframe')
+                if iframe and iframe.get('src'):
+                    src = iframe['src']
+                    if 'youtube.com' in src or 'youtu.be' in src or 'vimeo.com' in src:
+                        return src
+
+            # Перевіряємо повну статтю на відео
+            if article_url:
+                response = self.session.get(article_url, timeout=10, proxies={})
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                    
+                    # Шукаємо відео теги
+                    video_selectors = [
+                        'video',
+                        'iframe[src*="youtube"]',
+                        'iframe[src*="vimeo"]',
+                        'iframe[src*="dailymotion"]',
+                        '.video-container iframe',
+                        '.video iframe',
+                        'article iframe',
+                        '.content iframe'
+                    ]
+                    
+                    for selector in video_selectors:
+                        video_elem = soup.select_one(selector)
+                        if video_elem:
+                            src = video_elem.get('src')
+                            if src:
+                                if src.startswith('//'):
+                                    src = 'https:' + src
+                                elif src.startswith('/'):
+                                    src = 'https://' + article_url.split('/')[2] + src
+                                return src
+        except Exception as e:
+            logger.error(f"❌ Помилка при витягуванні відео: {e}")
         return ""
 
     def collect_all_news(self) -> List[Dict]:
