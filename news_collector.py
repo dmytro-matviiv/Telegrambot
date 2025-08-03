@@ -41,55 +41,49 @@ class NewsCollector:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     def translate_text(self, text, source_lang='en', target_lang='uk'):
-        """Простий переклад ключових слів з англійської на українську"""
+        """Переклад тексту з англійської на українську через Google Translate"""
         try:
             if not text or len(text.strip()) < 10:
                 return text
             
-            # Простий словник перекладів для ключових слів
-            translations = {
-                'ukraine': 'Україна',
-                'ukrainian': 'український',
-                'russia': 'Росія',
-                'russian': 'російський',
-                'war': 'війна',
-                'conflict': 'конфлікт',
-                'invasion': 'вторгнення',
-                'military': 'військовий',
-                'defense': 'оборона',
-                'weapons': 'зброя',
-                'sanctions': 'санкції',
-                'zelensky': 'Зеленський',
-                'putin': 'Путін',
-                'kyiv': 'Київ',
-                'kiev': 'Київ',
-                'donetsk': 'Донецьк',
-                'luhansk': 'Луганськ',
-                'crimea': 'Крим',
-                'breaking': 'терміново',
-                'news': 'новини',
-                'latest': 'останні',
-                'update': 'оновлення',
-                'report': 'звіт',
-                'says': 'каже',
-                'said': 'сказав',
-                'will': 'буде',
-                'has': 'має',
-                'have': 'мають',
-                'is': 'є',
-                'are': 'є',
-                'was': 'був',
-                'were': 'були'
-            }
+            # Перевіряємо чи текст дійсно англійською мовою
+            if not self.is_english_text(text):
+                return text
             
-            translated_text = text
-            for eng_word, ukr_word in translations.items():
-                # Замінюємо слова з урахуванням регістру
-                translated_text = re.sub(r'\b' + re.escape(eng_word) + r'\b', ukr_word, translated_text, flags=re.IGNORECASE)
+            from deep_translator import GoogleTranslator
             
-            return translated_text
+            # Розбиваємо довгий текст на частини (Google Translate має ліміт)
+            max_length = 4000
+            if len(text) > max_length:
+                # Розбиваємо на речення
+                sentences = text.split('. ')
+                translated_parts = []
+                
+                current_part = ""
+                for sentence in sentences:
+                    if len(current_part + sentence) < max_length:
+                        current_part += sentence + ". "
+                    else:
+                        if current_part:
+                            translated_part = GoogleTranslator(source='en', target='uk').translate(current_part.strip())
+                            translated_parts.append(translated_part)
+                        current_part = sentence + ". "
+                
+                # Перекладаємо останню частину
+                if current_part:
+                    translated_part = GoogleTranslator(source='en', target='uk').translate(current_part.strip())
+                    translated_parts.append(translated_part)
+                
+                return " ".join(translated_parts)
+            else:
+                # Перекладаємо весь текст одразу
+                translated = GoogleTranslator(source='en', target='uk').translate(text)
+                logger.info(f"🔄 Перекладено через Google Translate: {text[:50]}... → {translated[:50]}...")
+                return translated
+                
         except Exception as e:
-            logging.warning(f"Помилка перекладу: {e}")
+            logger.warning(f"Помилка Google Translate: {e}")
+            # Якщо Google Translate не працює, повертаємо оригінальний текст
             return text
 
     def is_english_text(self, text):
@@ -97,13 +91,20 @@ class NewsCollector:
         if not text:
             return False
         
-        # Прості індикатори англійської мови
-        english_indicators = ['the', 'and', 'for', 'with', 'this', 'that', 'will', 'have', 'been', 'from', 'they', 'said', 'news', 'latest', 'breaking', 'report', 'says', 'said', 'ukraine', 'russia', 'war', 'military', 'defense', 'zelensky', 'putin']
+        # Розширені індикатори англійської мови
+        english_indicators = [
+            'the', 'and', 'for', 'with', 'this', 'that', 'will', 'have', 'been', 'from', 'they', 'said',
+            'news', 'latest', 'breaking', 'report', 'says', 'said', 'ukraine', 'russia', 'war', 'military', 'defense', 'zelensky', 'putin',
+            'a', 'an', 'of', 'in', 'on', 'by', 'to', 'is', 'are', 'was', 'were', 'has', 'had', 'would', 'could', 'should',
+            'says', 'said', 'reports', 'reported', 'announced', 'announces', 'confirmed', 'confirms',
+            'forces', 'troops', 'military', 'defense', 'attack', 'strike', 'bombing', 'shelling',
+            'developments', 'situation', 'conflict', 'crisis', 'emergency', 'alert', 'warning'
+        ]
         text_lower = text.lower()
         english_count = sum(1 for word in english_indicators if word in text_lower)
         
-        # Якщо знайдено більше 1 англійського слова, вважаємо текст англійським
-        return english_count >= 1
+        # Якщо знайдено більше 2 англійських слів, вважаємо текст англійським
+        return english_count >= 2
 
     def get_news_from_rss(self, source_key: str, source_info: Dict) -> List[Dict]:
         try:
@@ -199,6 +200,11 @@ class NewsCollector:
                 full_text = self.get_full_article_text(entry.get('link', ''))
                 image_url = self.extract_image_url(entry, entry.get('link', ''))
                 video_url = self.extract_video_url(entry, entry.get('link', ''))
+                
+                # Логуємо знайдені відео
+                if video_url:
+                    logger.info(f"🎥 Знайдено відео в новині: {title[:50]}... (URL: {video_url[:50]}...)")
+                
                 # --- Перевірка якості фото ---
                 if image_url:
                     try:
@@ -340,6 +346,7 @@ class NewsCollector:
             if hasattr(entry, 'media_content') and entry.media_content:
                 for media in entry.media_content:
                     if media.get('type', '').startswith('video/'):
+                        logger.info(f"🎥 Знайдено відео в медіа контенті: {media['url'][:50]}...")
                         return media['url']
 
             # Перевіряємо опис на відео теги
@@ -347,6 +354,7 @@ class NewsCollector:
                 soup = BeautifulSoup(entry['summary'], 'html.parser')
                 video = soup.find('video')
                 if video and video.get('src'):
+                    logger.info(f"🎥 Знайдено відео тег в описі: {video['src'][:50]}...")
                     return video['src']
                 
                 # Перевіряємо iframe з відео (YouTube, Vimeo, тощо)
@@ -354,6 +362,7 @@ class NewsCollector:
                 if iframe and iframe.get('src'):
                     src = iframe['src']
                     if 'youtube.com' in src or 'youtu.be' in src or 'vimeo.com' in src:
+                        logger.info(f"🎥 Знайдено iframe відео в описі: {src[:50]}...")
                         return src
 
             # Перевіряємо повну статтю на відео
@@ -383,6 +392,7 @@ class NewsCollector:
                                     src = 'https:' + src
                                 elif src.startswith('/'):
                                     src = 'https://' + article_url.split('/')[2] + src
+                                logger.info(f"🎥 Знайдено відео в статті ({selector}): {src[:50]}...")
                                 return src
         except Exception as e:
             logger.error(f"❌ Помилка при витягуванні відео: {e}")

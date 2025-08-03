@@ -63,11 +63,32 @@ class NewsBot:
                     # Якщо немає дати — додаємо, але в кінець списку
                     filtered_news.append(news)
 
-            # Перемішуємо новини для різноманітності
-            random.shuffle(filtered_news)
+            # Сортуємо новини: спочатку з відео, потім без відео
+            # Новини з відео отримують пріоритет
+            news_with_video = []
+            news_without_video = []
+            
+            for news in filtered_news:
+                if news.get('video_url', ''):
+                    news_with_video.append(news)
+                else:
+                    news_without_video.append(news)
+            
+            # Перемішуємо кожну групу окремо для різноманітності
+            random.shuffle(news_with_video)
+            random.shuffle(news_without_video)
+            
+            # Об'єднуємо: спочатку новини з відео, потім без відео
+            prioritized_news = news_with_video + news_without_video
             
             # Обмежуємо кількість публікацій за раз
-            news_to_publish = filtered_news[:MAX_POSTS_PER_CHECK]
+            news_to_publish = prioritized_news[:MAX_POSTS_PER_CHECK]
+            
+            # Логуємо статистику пріоритизації
+            if news_with_video:
+                logger.info(f"🎥 Пріоритетні новини з відео: {len(news_with_video)}")
+            if news_without_video:
+                logger.info(f"📰 Звичайні новини без відео: {len(news_without_video)}")
             
             # Публікуємо новини
             published_count = await self.publisher.publish_multiple_news(news_to_publish)
@@ -122,7 +143,7 @@ class NewsBot:
         
         # Запускаємо моніторинг тривог в окремому завданні
         alerts_task = asyncio.create_task(self.alerts_monitor.monitor(interval=60))
-        logger.info("🚨 Моніторинг повітряних тривог запущений")
+        logger.info("🚨 Моніторинг повітряних тривог запущений (перевірка кожні 60 сек)")
         
         while self.is_running:
             try:

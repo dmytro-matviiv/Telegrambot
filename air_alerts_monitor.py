@@ -38,6 +38,7 @@ class AirAlertsMonitor:
     def __init__(self, publisher: TelegramPublisher):
         self.publisher = publisher
         self.prev_alerts = set()  # {(location_title, alert_type)}
+        self.is_first_run = True  # Прапорець для першого запуску
 
     async def fetch_alerts(self):
         headers = {}
@@ -51,10 +52,10 @@ class AirAlertsMonitor:
             async with session.get(API_URL, headers=headers, params=params, timeout=15) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    logging.info(f"Отримано дані з API: {data}")
+                    logging.info(f"✅ Отримано дані з API (статус: {resp.status})")
                     return data
                 else:
-                    logging.error(f"Помилка при запиті до alerts.in.ua: {resp.status}")
+                    logging.error(f"❌ Помилка при запиті до alerts.in.ua: {resp.status}")
                     return []
 
     def is_valid_alert(self, alert):
@@ -81,7 +82,7 @@ class AirAlertsMonitor:
         return True
 
     def group_alerts(self, alerts):
-        # Повертає: (all_ukraine, {region: [області]})
+        """Групує тривоги для оптимізації повідомлень"""
         oblasts = []
         for alert in alerts:
             if self.is_valid_alert(alert):
@@ -89,7 +90,8 @@ class AirAlertsMonitor:
                 if location_title:
                     oblasts.append(location_title)
         
-        if len(oblasts) >= 24:
+        # Якщо тривога в більшості областей - показуємо загальну тривогу
+        if len(oblasts) >= 15:  # Більше половини областей
             return True, {}
         
         region_map = {k: [] for k in REGIONS}
@@ -99,10 +101,38 @@ class AirAlertsMonitor:
                     region_map[region].append(oblast)
         return False, region_map
 
+    def should_group_alerts(self, new_alerts, current_alerts_dict):
+        """Перевіряє чи потрібно групувати тривоги"""
+        if len(new_alerts) >= 3:
+            # Перевіряємо чи тривоги почалися в проміжку 1-2 хвилини
+            now = datetime.datetime.utcnow()
+            alert_times = []
+            
+            for key in new_alerts:
+                alert = current_alerts_dict.get(key)
+                if alert and alert.get('started_at'):
+                    try:
+                        started_dt = datetime.datetime.strptime(alert['started_at'][:19], "%Y-%m-%dT%H:%M:%S")
+                        alert_times.append(started_dt)
+                    except:
+                        continue
+            
+            if len(alert_times) >= 3:
+                # Перевіряємо чи всі тривоги в межах 2 хвилин
+                min_time = min(alert_times)
+                max_time = max(alert_times)
+                time_diff = (max_time - min_time).total_seconds() / 60
+                
+                if time_diff <= 2:
+                    return True
+        
+        return False
+
     async def send_alert(self, text):
         await self.publisher.send_simple_message(text)
 
     async def monitor(self, interval=60):
+        logging.info(f"🚨 Моніторинг тривог запущений з інтервалом {interval} сек")
         while True:
             try:
                 alerts_data = await self.fetch_alerts()
@@ -132,8 +162,23 @@ class AirAlertsMonitor:
                         current_alerts_dict[(location_title, alert_type)] = alert
 
                 current_alerts = set(current_alerts_dict.keys())
+                
+                # При першому запуску просто зберігаємо поточні тривоги без надсилання
+                if self.is_first_run:
+                    logging.info("🚀 Перший запуск - зберігаємо поточні тривоги без надсилання")
+                    self.prev_alerts = current_alerts
+                    self.is_first_run = False
+                    await asyncio.sleep(interval)
+                    continue
+                
                 new_alerts = current_alerts - self.prev_alerts
                 ended_alerts = self.prev_alerts - current_alerts
+                
+                # Логуємо статистику
+                if new_alerts:
+                    logging.info(f"🚨 Знайдено {len(new_alerts)} нових тривог")
+                if ended_alerts:
+                    logging.info(f"✅ Знайдено {len(ended_alerts)} завершених тривог")
 
                 # --- Формування інформативних повідомлень ---
                 def format_alert_message(alert, is_end=False):
@@ -142,35 +187,70 @@ class AirAlertsMonitor:
                     if is_end:
                         return f"✅ <b>Відбій тривоги</b> — {location}"
                     msg = f"🚨 <b>Повітряна тривога</b> — {location}"
-                    if started_at:
-                        msg += f"\nПочаток: {started_at[:16].replace('T',' ')}"
                     return msg
 
-                # --- Надсилання нових подій (тільки якщо почались не більше 2 хвилин тому) ---
+                # --- Надсилання нових подій ---
                 now = datetime.datetime.utcnow()
-                for key in new_alerts:
-                    alert = current_alerts_dict[key]
-                    started_at = alert.get('started_at', '')
-                    # Перевіряємо, чи тривога не стара
-                    if started_at:
-                        try:
-                            started_dt = datetime.datetime.strptime(started_at[:19], "%Y-%m-%dT%H:%M:%S")
-                        except Exception:
-                            continue
-                        delta = (now - started_dt).total_seconds() / 60
-                        if delta > 2:
-                            continue  # Не надсилати старі тривоги
-                    text = format_alert_message(alert, is_end=False)
-                    await self.send_alert(text)
+                
+                # Перевіряємо чи потрібно групувати тривоги
+                if self.should_group_alerts(new_alerts, current_alerts_dict):
+                    logging.info(f"📤 Надсилаємо загальну тривогу для України")
+                    await self.send_alert("🚨 <b>Повітряна тривога</b> — Україна")
+                else:
+                    # Надсилаємо окремі тривоги
+                    for key in new_alerts:
+                        alert = current_alerts_dict[key]
+                        started_at = alert.get('started_at', '')
+                        
+                        # Перевіряємо час початку тривоги
+                        if started_at:
+                            try:
+                                started_dt = datetime.datetime.strptime(started_at[:19], "%Y-%m-%dT%H:%M:%S")
+                                delta = (now - started_dt).total_seconds() / 60
+                                
+                                # Надсилаємо тільки тривоги, які почалися не більше 2 хвилин тому
+                                if delta > 2:
+                                    logging.info(f"⏩ Пропускаємо стару тривогу: {alert.get('location_title', '')} (почалася {delta:.1f} хв тому)")
+                                    continue
+                            except Exception as e:
+                                logging.warning(f"Помилка парсингу часу тривоги: {e}")
+                                continue
+                        
+                        text = format_alert_message(alert, is_end=False)
+                        logging.info(f"📤 Надсилаємо нову тривогу: {alert.get('location_title', '')}")
+                        await self.send_alert(text)
 
                 # --- Надсилання завершених подій ---
                 for key in ended_alerts:
                     location, alert_type = key
                     if alert_type != 'air_raid':
                         continue
-                    fake_alert = {'location_title': location}
-                    text = format_alert_message(fake_alert, is_end=True)
-                    await self.send_alert(text)
+                    
+                    # Перевіряємо, чи це дійсно новий відбій (не старі дані)
+                    # Шукаємо відповідну тривогу в поточних даних, яка має finished_at
+                    for alert in alerts_list:
+                        if (alert.get('location_title') == location and 
+                            alert.get('alert_type') == alert_type and 
+                            alert.get('finished_at')):
+                            
+                            finished_at = alert.get('finished_at')
+                            try:
+                                finished_dt = datetime.datetime.strptime(finished_at[:19], "%Y-%m-%dT%H:%M:%S")
+                                delta = (now - finished_dt).total_seconds() / 60
+                                
+                                # Надсилаємо тільки відбої, які відбулися не більше 2 хвилин тому
+                                if delta > 2:
+                                    logging.info(f"⏩ Пропускаємо старий відбій: {location} (відбувся {delta:.1f} хв тому)")
+                                    continue
+                            except Exception as e:
+                                logging.warning(f"Помилка парсингу часу відбою: {e}")
+                                continue
+                            
+                            fake_alert = {'location_title': location}
+                            text = format_alert_message(fake_alert, is_end=True)
+                            logging.info(f"📤 Надсилаємо відбій тривоги: {location}")
+                            await self.send_alert(text)
+                            break
 
                 self.prev_alerts = current_alerts
 

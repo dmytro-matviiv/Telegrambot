@@ -130,22 +130,13 @@ class TelegramPublisher:
             
             # Перевіряємо чи є відео
             video_url = news_item.get('video_url', '')
-            video_data = None
+            
+            # Якщо є відео, додаємо посилання на нього до тексту
             if video_url:
-                video_data = await self.download_video(video_url)
+                text += f"\n\n🎥 <a href=\"{video_url}\">Дивитися відео</a>"
+                logger.info(f"Додано посилання на відео: {video_url[:50]}...")
             
-            # Якщо є відео, публікуємо його
-            if video_data:
-                await self.bot.send_video(
-                    chat_id=CHANNEL_ID,
-                    video=video_data,
-                    caption=text,
-                    parse_mode='HTML'
-                )
-                logger.info(f"Опубліковано новину з відео: {news_item.get('title', '')[:50]}...")
-                return True
-            
-            # Якщо немає відео, публікуємо з зображенням
+            # Публікуємо з зображенням
             image_url = news_item.get('image_url', '')
             image_data = await self.download_image(image_url)
 
@@ -193,43 +184,35 @@ class TelegramPublisher:
             
             # Перевіряємо чи є відео
             video_url = news_item.get('video_url', '')
-            video_data = None
+            
+            # Якщо є відео, додаємо посилання на нього до тексту
             if video_url:
-                video_data = await self.download_video(video_url)
+                text += f"\n\n🎥 <a href=\"{video_url}\">Дивитися відео</a>"
+                logger.info(f"Додано посилання на відео: {video_url[:50]}...")
             
             try:
-                # Якщо є відео, публікуємо його
-                if video_data:
-                    await self.bot.send_video(
+                # Публікуємо з зображенням
+                image_url = news_item.get('image_url', '')
+                image_data = await self.download_image(image_url)
+                if not image_data:
+                    image_data = await self.download_image(DEFAULT_IMAGE_URL)
+                
+                if image_data:
+                    await self.bot.send_photo(
                         chat_id=CHANNEL_ID,
-                        video=video_data,
+                        photo=image_data,
                         caption=text,
                         parse_mode='HTML'
                     )
-                    logger.info(f"Опубліковано новину з відео: {news_item.get('title', '')[:50]}...")
+                    logger.info(f"Опубліковано новину з зображенням: {news_item.get('title', '')[:50]}...")
                 else:
-                    # Якщо немає відео, публікуємо з зображенням
-                    image_url = news_item.get('image_url', '')
-                    image_data = await self.download_image(image_url)
-                    if not image_data:
-                        image_data = await self.download_image(DEFAULT_IMAGE_URL)
-                    
-                    if image_data:
-                        await self.bot.send_photo(
-                            chat_id=CHANNEL_ID,
-                            photo=image_data,
-                            caption=text,
-                            parse_mode='HTML'
-                        )
-                        logger.info(f"Опубліковано новину з зображенням: {news_item.get('title', '')[:50]}...")
-                    else:
-                        await self.bot.send_message(
-                            chat_id=CHANNEL_ID,
-                            text=text,
-                            parse_mode='HTML',
-                            disable_web_page_preview=False
-                        )
-                        logger.info(f"Опубліковано новину без зображення: {news_item.get('title', '')[:50]}...")
+                    await self.bot.send_message(
+                        chat_id=CHANNEL_ID,
+                        text=text,
+                        parse_mode='HTML',
+                        disable_web_page_preview=False
+                    )
+                    logger.info(f"Опубліковано новину без зображення: {news_item.get('title', '')[:50]}...")
                 
                 published_count += 1
                 break  # Публікуємо лише одну успішну новину за раз
