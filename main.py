@@ -4,7 +4,7 @@ import schedule
 import time
 import random
 from datetime import datetime, timedelta
-from news_collector import NewsCollector
+from news_collector import NewsCollector, parse_published_date
 from telegram_publisher import TelegramPublisher
 from air_alerts_monitor import AirAlertsMonitor
 from memorial_messages import MemorialMessageScheduler
@@ -50,13 +50,7 @@ class NewsBot:
                 published_str = news.get('published', '')
                 published_time = None
                 if published_str:
-                    try:
-                        published_time = datetime.strptime(published_str[:19], "%Y-%m-%dT%H:%M:%S")
-                    except Exception:
-                        try:
-                            published_time = datetime.strptime(published_str[:19], "%Y-%m-%d %H:%M:%S")
-                        except Exception:
-                            published_time = None
+                    published_time = parse_published_date(published_str)
                 if published_time:
                     age = (now - published_time).total_seconds() / 60
                     if 10 <= age <= 30:

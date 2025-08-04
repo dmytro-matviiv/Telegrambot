@@ -7,6 +7,7 @@ import json
 import time
 import random
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from typing import List, Dict
 import logging
 from config import NEWS_SOURCES, PUBLISHED_NEWS_FILE, DEFAULT_IMAGE_URL
@@ -15,6 +16,48 @@ import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def parse_published_date(date_str):
+    """Парсить дату публікації з різних форматів RSS"""
+    if not date_str:
+        return None
+    
+    try:
+        # Спробуємо RFC 2822 формат (найпоширеніший в RSS)
+        return parsedate_to_datetime(date_str)
+    except (ValueError, TypeError):
+        pass
+    
+    # Список можливих форматів дат
+    date_formats = [
+        "%Y-%m-%dT%H:%M:%S",           # ISO format
+        "%Y-%m-%dT%H:%M:%SZ",          # ISO format with Z
+        "%Y-%m-%d %H:%M:%S",           # Simple format
+        "%a, %d %b %Y %H:%M:%S %z",    # RFC 2822 with timezone
+        "%a, %d %b %Y %H:%M:%S",       # RFC 2822 without timezone
+        "%a, %d %b %Y %H",             # RFC 2822 incomplete (hour only)
+        "%d %b %Y %H:%M:%S",           # Short RFC format
+        "%Y-%m-%d",                    # Date only
+    ]
+    
+    for fmt in date_formats:
+        try:
+            # Обрізаємо рядок до потрібної довжини для формату
+            if fmt == "%Y-%m-%dT%H:%M:%S":
+                date_str_clean = date_str[:19]
+            elif fmt == "%Y-%m-%d %H:%M:%S":
+                date_str_clean = date_str[:19]
+            elif fmt == "%Y-%m-%d":
+                date_str_clean = date_str[:10]
+            else:
+                date_str_clean = date_str
+            
+            return datetime.strptime(date_str_clean, fmt)
+        except (ValueError, TypeError):
+            continue
+    
+    logger.warning(f"Не вдалося розпарсити дату: {date_str}")
+    return None
 
 class NewsCollector:
     def __init__(self):
@@ -461,10 +504,22 @@ class NewsCollector:
             logger.warning("===== КІНЕЦЬ СПИСКУ МЕРТВИХ ДЖЕРЕЛ =====\n")
         
         # Сортуємо за часом публікації, зберігаючи пріоритет відео
-        all_news.sort(key=lambda x: (
-            0 if x.get('video_url', '') else 1,  # Відео новини першими
-            -(time.mktime(datetime.strptime(x.get('published', '1970-01-01T00:00:00')[:19], "%Y-%m-%dT%H:%M:%S").timetuple()) if x.get('published') else 0)
-        ))
+        def get_sort_key(news_item):
+            # Відео новини першими
+            video_priority = 0 if news_item.get('video_url', '') else 1
+            
+            # Парсимо дату публікації
+            published_str = news_item.get('published', '')
+            if published_str:
+                published_dt = parse_published_date(published_str)
+                if published_dt:
+                    timestamp = time.mktime(published_dt.timetuple())
+                    return (video_priority, -timestamp)
+            
+            # Якщо дати немає, ставимо в кінець
+            return (video_priority, 0)
+        
+        all_news.sort(key=get_sort_key)
         
         return all_news
 
