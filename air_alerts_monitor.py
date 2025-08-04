@@ -149,6 +149,8 @@ class AirAlertsMonitor:
                 # --- Групування по типу події та області/місту ---
                 # Ключ: (location_title, alert_type), значення: alert (dict)
                 current_alerts_dict = {}
+                all_alerts_dict = {}  # Всі тривоги (включно з завершеними)
+                
                 for alert in alerts_list:
                     if not self.is_valid_alert(alert):
                         continue
@@ -157,9 +159,13 @@ class AirAlertsMonitor:
                     alert_type = alert.get('alert_type', '')
                     finished_at = alert.get('finished_at')
                     started_at = alert.get('started_at', '')
-                    # Враховуємо тільки активні події air_raid
+                    
+                    key = (location_title, alert_type)
+                    all_alerts_dict[key] = alert
+                    
+                    # Враховуємо тільки активні події air_raid для поточних тривог
                     if location_title and not finished_at:
-                        current_alerts_dict[(location_title, alert_type)] = alert
+                        current_alerts_dict[key] = alert
 
                 current_alerts = set(current_alerts_dict.keys())
                 
@@ -226,31 +232,32 @@ class AirAlertsMonitor:
                     if alert_type != 'air_raid':
                         continue
                     
-                    # Перевіряємо, чи це дійсно новий відбій (не старі дані)
-                    # Шукаємо відповідну тривогу в поточних даних, яка має finished_at
-                    for alert in alerts_list:
-                        if (alert.get('location_title') == location and 
-                            alert.get('alert_type') == alert_type and 
-                            alert.get('finished_at')):
+                    # Перевіряємо, чи є завершена тривога в поточних даних API
+                    finished_alert = all_alerts_dict.get(key)
+                    if finished_alert and finished_alert.get('finished_at'):
+                        # Є завершена тривога в API - перевіряємо час завершення
+                        finished_at = finished_alert.get('finished_at')
+                        try:
+                            finished_dt = datetime.datetime.strptime(finished_at[:19], "%Y-%m-%dT%H:%M:%S")
+                            delta = (now - finished_dt).total_seconds() / 60
                             
-                            finished_at = alert.get('finished_at')
-                            try:
-                                finished_dt = datetime.datetime.strptime(finished_at[:19], "%Y-%m-%dT%H:%M:%S")
-                                delta = (now - finished_dt).total_seconds() / 60
-                                
-                                # Надсилаємо тільки відбої, які відбулися не більше 2 хвилин тому
-                                if delta > 2:
-                                    logging.info(f"⏩ Пропускаємо старий відбій: {location} (відбувся {delta:.1f} хв тому)")
-                                    continue
-                            except Exception as e:
-                                logging.warning(f"Помилка парсингу часу відбою: {e}")
+                            # Надсилаємо тільки відбої, які відбулися не більше 5 хвилин тому
+                            if delta > 5:
+                                logging.info(f"⏩ Пропускаємо старий відбій: {location} (відбувся {delta:.1f} хв тому)")
                                 continue
-                            
-                            fake_alert = {'location_title': location}
-                            text = format_alert_message(fake_alert, is_end=True)
-                            logging.info(f"📤 Надсилаємо відбій тривоги: {location}")
-                            await self.send_alert(text)
-                            break
+                        except Exception as e:
+                            logging.warning(f"Помилка парсингу часу відбою: {e}")
+                            # Якщо не можемо парсити час - все одно надсилаємо відбій
+                    else:
+                        # Немає завершеної тривоги в API - тривога просто зникла з активних
+                        # Це означає що вона завершилася, надсилаємо відбій
+                        logging.info(f"🔍 Тривога зникла з активних (API не повертає finished_at): {location}")
+                    
+                    # Надсилаємо повідомлення про відбій
+                    fake_alert = {'location_title': location}
+                    text = format_alert_message(fake_alert, is_end=True)
+                    logging.info(f"📤 Надсилаємо відбій тривоги: {location}")
+                    await self.send_alert(text)
 
                 self.prev_alerts = current_alerts
 
