@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from news_collector import NewsCollector
 from telegram_publisher import TelegramPublisher
 from air_alerts_monitor import AirAlertsMonitor
+from memorial_messages import MemorialMessageScheduler
 from config import CHECK_INTERVAL, MAX_POSTS_PER_CHECK
 
 # Налаштування логування
@@ -25,6 +26,7 @@ class NewsBot:
         self.collector = NewsCollector()
         self.publisher = TelegramPublisher()
         self.alerts_monitor = AirAlertsMonitor(self.publisher)
+        self.memorial_scheduler = MemorialMessageScheduler(self.publisher)
         self.is_running = False
 
     async def check_and_publish_news(self):
@@ -63,32 +65,9 @@ class NewsBot:
                     # Якщо немає дати — додаємо, але в кінець списку
                     filtered_news.append(news)
 
-            # Сортуємо новини: спочатку з відео, потім без відео
-            # Новини з відео отримують пріоритет
-            news_with_video = []
-            news_without_video = []
-            
-            for news in filtered_news:
-                if news.get('video_url', ''):
-                    news_with_video.append(news)
-                else:
-                    news_without_video.append(news)
-            
-            # Перемішуємо кожну групу окремо для різноманітності
-            random.shuffle(news_with_video)
-            random.shuffle(news_without_video)
-            
-            # Об'єднуємо: спочатку новини з відео, потім без відео
-            prioritized_news = news_with_video + news_without_video
-            
             # Обмежуємо кількість публікацій за раз
-            news_to_publish = prioritized_news[:MAX_POSTS_PER_CHECK]
-            
-            # Логуємо статистику пріоритизації
-            if news_with_video:
-                logger.info(f"🎥 Пріоритетні новини з відео: {len(news_with_video)}")
-            if news_without_video:
-                logger.info(f"📰 Звичайні новини без відео: {len(news_without_video)}")
+            # Пріоритизація відео та перемішування джерел тепер відбувається в NewsCollector
+            news_to_publish = filtered_news[:MAX_POSTS_PER_CHECK]
             
             # Публікуємо новини
             published_count = await self.publisher.publish_multiple_news(news_to_publish)
@@ -145,6 +124,10 @@ class NewsBot:
         alerts_task = asyncio.create_task(self.alerts_monitor.monitor(interval=60))
         logger.info("🚨 Моніторинг повітряних тривог запущений (перевірка кожні 60 сек)")
         
+        # Запускаємо моніторинг меморіальних повідомлень в окремому завданні
+        memorial_task = asyncio.create_task(self.memorial_scheduler.monitor_memorial_schedule(check_interval=300))
+        logger.info("🕯️ Моніторинг меморіальних повідомлень запущений (перевірка кожні 5 хвилин)")
+        
         while self.is_running:
             try:
                 await self.check_and_publish_news()
@@ -157,12 +140,17 @@ class NewsBot:
                 logger.error(f"❌ Помилка в основному циклі: {e}")
                 await asyncio.sleep(60)  # Чекаємо хвилину перед повторною спробою
         
-        # Зупиняємо моніторинг тривог
+        # Зупиняємо моніторинг тривог та меморіальних повідомлень
         alerts_task.cancel()
+        memorial_task.cancel()
         try:
             await alerts_task
         except asyncio.CancelledError:
             logger.info("🚨 Моніторинг тривог зупинено")
+        try:
+            await memorial_task
+        except asyncio.CancelledError:
+            logger.info("🕯️ Моніторинг меморіальних повідомлень зупинено")
 
     def stop(self):
         """Зупиняє бота"""

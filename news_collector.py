@@ -5,6 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import time
+import random
 from datetime import datetime, timedelta
 from typing import List, Dict
 import logging
@@ -401,26 +402,70 @@ class NewsCollector:
     def collect_all_news(self) -> List[Dict]:
         all_news = []
         dead_sources = []  # Список "мертвих" джерел
-        for source_key, source_info in NEWS_SOURCES.items():
+        sources_with_news = []  # Джерела, які мають новини
+        sources_without_news = []  # Джерела без новин
+        
+        # Перший прохід: збираємо по одній новині з кожного джерела
+        source_items = list(NEWS_SOURCES.items())
+        random.shuffle(source_items)  # Перемішуємо порядок джерел
+        
+        for source_key, source_info in source_items:
             try:
                 news = self.get_news_from_rss(source_key, source_info)
-                if not news:
+                if news:
+                    sources_with_news.append((source_key, source_info, news))
+                    logger.info(f"✅ {source_info['name']}: знайдено {len(news)} новин")
+                else:
+                    sources_without_news.append((source_key, source_info))
                     dead_sources.append({
                         'key': source_key,
                         'name': source_info.get('name', source_key),
                         'rss': source_info.get('rss', ''),
                         'website': source_info.get('website', '')
                     })
-                all_news.extend(news)
                 time.sleep(2)
             except Exception as e:
                 logger.error(f"❗ Помилка при зборі новин з {source_key}: {e}")
+                sources_without_news.append((source_key, source_info))
+        
+        # Розподіляємо новини з пріоритизацією відео
+        news_with_video = []
+        news_without_video = []
+        
+        for source_key, source_info, news_list in sources_with_news:
+            for news_item in news_list:
+                if news_item.get('video_url', ''):
+                    news_with_video.append(news_item)
+                    logger.info(f"🎥 Пріоритетна новина з відео від {source_info['name']}: {news_item.get('title', '')[:50]}...")
+                else:
+                    news_without_video.append(news_item)
+        
+        # Перемішуємо новини в кожній категорії для різноманітності
+        random.shuffle(news_with_video)
+        random.shuffle(news_without_video)
+        
+        # Об'єднуємо: спочатку новини з відео, потім без відео
+        all_news = news_with_video + news_without_video
+        
+        # Логуємо статистику
+        logger.info(f"📊 Статистика збору новин:")
+        logger.info(f"   🎥 Новини з відео: {len(news_with_video)}")
+        logger.info(f"   📰 Новини без відео: {len(news_without_video)}")
+        logger.info(f"   ✅ Активні джерела: {len(sources_with_news)}")
+        logger.info(f"   ❌ Неактивні джерела: {len(sources_without_news)}")
+        
         if dead_sources:
             logger.warning("\n===== МЕРТВІ ДЖЕРЕЛА (немає новин) =====")
             for src in dead_sources:
                 logger.warning(f"{src['name']} | RSS: {src['rss']} | Сайт: {src['website']}")
             logger.warning("===== КІНЕЦЬ СПИСКУ МЕРТВИХ ДЖЕРЕЛ =====\n")
-        all_news.sort(key=lambda x: x.get('published', ''), reverse=True)
+        
+        # Сортуємо за часом публікації, зберігаючи пріоритет відео
+        all_news.sort(key=lambda x: (
+            0 if x.get('video_url', '') else 1,  # Відео новини першими
+            -(time.mktime(datetime.strptime(x.get('published', '1970-01-01T00:00:00')[:19], "%Y-%m-%dT%H:%M:%S").timetuple()) if x.get('published') else 0)
+        ))
+        
         return all_news
 
     def mark_as_published(self, news_id: str):
