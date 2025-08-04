@@ -9,72 +9,53 @@ CHANNEL_ID = os.getenv('CHANNEL_ID')
 
 # Джерела новин (RSS та веб-сайти)
 NEWS_SOURCES = {
-    # Офіційні джерела
+    # Офіційні українські джерела
     'tsn': {
         'name': 'ТСН',
         'rss': 'https://tsn.ua/rss',
         'website': 'https://tsn.ua/'
     },
-    # Новини про війну в Україні
     'pravda_war': {
         'name': 'Українська правда (Війна)',
         'rss': 'https://www.pravda.com.ua/rss/',
         'website': 'https://www.pravda.com.ua/rus/news/'
     },
-    # Всесвітні новини
-    'bbc_world': {
-        'name': 'BBC World News',
-        'rss': 'https://feeds.bbci.co.uk/news/world/rss.xml',
-        'website': 'https://www.bbc.com/news/world'
-    },
-    'reuters_world': {
-        'name': 'Reuters World',
-        'rss': 'https://feeds.reuters.com/Reuters/worldNews',
-        'website': 'https://www.reuters.com/world/'
-    },
-    'cnn_world': {
-        'name': 'CNN World',
-        'rss': 'https://rss.cnn.com/rss/edition_world.rss',
-        'website': 'https://www.cnn.com/world'
-    },
-    'ap_world': {
-        'name': 'Associated Press World',
-        'rss': 'https://feeds.feedburner.com/APWorldNews',
-        'website': 'https://apnews.com/hub/world-news'
-    },
-    # Новини про війну та безпеку
-    'defense_news': {
-        'name': 'Defense News',
-        'rss': 'https://www.defensenews.com/rss/feed',
-        'website': 'https://www.defensenews.com/'
-    },
-    'war_zone': {
-        'name': 'The War Zone',
-        'rss': 'https://www.thedrive.com/the-war-zone/rss',
-        'website': 'https://www.thedrive.com/the-war-zone'
-    },
-    # Українські новини про війну
     'ukrinform': {
         'name': 'Укрінформ',
         'rss': 'https://www.ukrinform.ua/rss',
         'website': 'https://www.ukrinform.ua/'
     },
-    'unian_war': {
-        'name': 'УНІАН (Війна)',
-        'rss': 'https://www.unian.ua/rss/war.rss',
-        'website': 'https://www.unian.ua/war'
+    'espreso': {
+        'name': 'Еспресо',
+        'rss': 'https://espreso.tv/rss',
+        'website': 'https://espreso.tv/'
     },
-    'hromadske': {
-        'name': 'Громадське',
-        'rss': 'https://hromadske.ua/rss',
-        'website': 'https://hromadske.ua/'
+    'unian': {
+        'name': 'УНІАН',
+        'rss': 'https://rss.unian.net/site/news_ukr.rss',
+        'website': 'https://www.unian.ua/'
     },
-    'nv_war': {
-        'name': 'НВ (Війна)',
-        'rss': 'https://nv.ua/rss/war.rss',
-        'website': 'https://nv.ua/ukr/war'
+    'korrespondent': {
+        'name': 'Кореспондент.net',
+        'rss': 'https://ua.korrespondent.net/rss/',
+        'website': 'https://ua.korrespondent.net/'
     },
-    # Міжнародні новини про Україну
+    'segodnya': {
+        'name': 'Сьогодні.ua',
+        'rss': 'https://ukr.segodnya.ua/rss.xml',
+        'website': 'https://ukr.segodnya.ua/'
+    },
+    'zn_ua': {
+        'name': 'Дзеркало тижня',
+        'rss': 'https://zn.ua/rss/full.rss',
+        'website': 'https://zn.ua/'
+    },
+    # Міжнародні джерела
+    'bbc_world': {
+        'name': 'BBC World News',
+        'rss': 'https://feeds.bbci.co.uk/news/world/rss.xml',
+        'website': 'https://www.bbc.com/news/world'
+    },
     'guardian_ukraine': {
         'name': 'The Guardian (Україна)',
         'rss': 'https://www.theguardian.com/world/ukraine/rss',
@@ -85,20 +66,30 @@ NEWS_SOURCES = {
         'rss': 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
         'website': 'https://www.nytimes.com/topic/destination/ukraine'
     },
-    'washington_post_world': {
-        'name': 'Washington Post World',
-        'rss': 'https://feeds.washingtonpost.com/rss/world',
-        'website': 'https://www.washingtonpost.com/world/'
-    },
     'al_jazeera_world': {
         'name': 'Al Jazeera World',
         'rss': 'https://www.aljazeera.com/xml/rss/all.xml',
         'website': 'https://www.aljazeera.com/news/'
     },
-    'dw_world': {
-        'name': 'Deutsche Welle World',
-        'rss': 'https://rss.dw.com/xml/rss-de-all',
-        'website': 'https://www.dw.com/en/top-stories/world/s-1007'
+    'dw_ukraine': {
+        'name': 'Deutsche Welle Україна',
+        'rss': 'https://rss.dw.com/xml/rss-uk-all',
+        'website': 'https://www.dw.com/uk/'
+    },
+    'radiosvoboda': {
+        'name': 'Радіо Свобода',
+        'rss': 'https://www.radiosvoboda.org/api/zrqiteuuir',
+        'website': 'https://www.radiosvoboda.org/'
+    },
+    'voa_ukraine': {
+        'name': 'Голос Америки Україна',
+        'rss': 'https://ukrainian.voanews.com/api/zrqiteuuir',
+        'website': 'https://ukrainian.voanews.com/'
+    },
+    'censor_net': {
+        'name': 'Цензор.НЕТ',
+        'rss': 'https://censor.net/includes/news_rss.php',
+        'website': 'https://censor.net/'
     }
 }
 

@@ -39,8 +39,18 @@ class TelegramPublisher:
         try:
             if not video_url:
                 return None
+            
+            # Перевіряємо розмір відео перед завантаженням
+            async with self.session.head(video_url, timeout=10) as response:
+                if response.status != 200:
+                    return None
                 
-            async with self.session.get(video_url, timeout=30) as response:
+                content_length = response.headers.get('content-length')
+                if content_length and int(content_length) > 50 * 1024 * 1024:  # 50MB ліміт Telegram
+                    logger.warning(f"Відео занадто велике: {content_length} bytes")
+                    return None
+                
+            async with self.session.get(video_url, timeout=60) as response:
                 if response.status == 200:
                     return await response.read()
                 else:
@@ -49,6 +59,45 @@ class TelegramPublisher:
         except Exception as e:
             logger.error(f"Помилка при завантаженні відео: {e}")
             return None
+
+    def extract_direct_video_url(self, video_url: str) -> Optional[str]:
+        """Витягує прямий URL відео з iframe або embed посилань"""
+        try:
+            if not video_url:
+                return None
+            
+            # Для YouTube відео
+            if 'youtube.com' in video_url or 'youtu.be' in video_url:
+                # YouTube відео не можна завантажити напряму, повертаємо оригінальний URL
+                return video_url
+            
+            # Для Vimeo відео
+            if 'vimeo.com' in video_url:
+                return video_url
+            
+            # Для Facebook відео
+            if 'facebook.com' in video_url:
+                return video_url
+            
+            # Для прямих відео файлів
+            if video_url.endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+                return video_url
+            
+            # Для iframe посилань, спробуємо витягти src
+            if 'iframe' in video_url.lower():
+                try:
+                    import re
+                    src_match = re.search(r'src=["\']([^"\']+)["\']', video_url)
+                    if src_match:
+                        return src_match.group(1)
+                except:
+                    pass
+            
+            return video_url
+            
+        except Exception as e:
+            logger.error(f"Помилка при витягуванні URL відео: {e}")
+            return video_url
 
     def format_news_text(self, news_item: Dict) -> str:
         """Форматує текст новини для публікації"""
@@ -130,38 +179,67 @@ class TelegramPublisher:
             
             # Перевіряємо чи є відео
             video_url = news_item.get('video_url', '')
+            video_published = False
             
-            # Якщо є відео, додаємо посилання на нього до тексту
             if video_url:
-                text += f"\n\n🎥 <a href=\"{video_url}\">Дивитися відео</a>"
-                logger.info(f"Додано посилання на відео: {video_url[:50]}...")
+                # Спробуємо опублікувати відео напряму
+                direct_video_url = self.extract_direct_video_url(video_url)
+                
+                # Для прямих відео файлів спробуємо завантажити та надіслати
+                if direct_video_url and direct_video_url.endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+                    try:
+                        video_data = await self.download_video(direct_video_url)
+                        if video_data:
+                            await self.bot.send_video(
+                                chat_id=CHANNEL_ID,
+                                video=video_data,
+                                caption=text,
+                                parse_mode='HTML'
+                            )
+                            logger.info(f"🎥 Опубліковано новину з відео: {news_item.get('title', '')[:50]}...")
+                            video_published = True
+                    except Exception as e:
+                        logger.warning(f"Не вдалося надіслати відео файл: {e}")
+                
+                # Якщо не вдалося надіслати відео файл, додаємо посилання до тексту
+                if not video_published:
+                    if 'youtube.com' in video_url or 'youtu.be' in video_url:
+                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на YouTube</a>"
+                    elif 'vimeo.com' in video_url:
+                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на Vimeo</a>"
+                    elif 'facebook.com' in video_url:
+                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на Facebook</a>"
+                    else:
+                        text += f"\n\n🎥 <a href=\"{video_url}\">Дивитися відео</a>"
+                    logger.info(f"Додано посилання на відео: {video_url[:50]}...")
             
-            # Публікуємо з зображенням
-            image_url = news_item.get('image_url', '')
-            image_data = await self.download_image(image_url)
+            # Якщо відео не було опубліковано окремо, публікуємо з зображенням
+            if not video_published:
+                image_url = news_item.get('image_url', '')
+                image_data = await self.download_image(image_url)
 
-            # Якщо не вдалося завантажити фото, пробуємо стандартне
-            if not image_data:
-                image_data = await self.download_image(DEFAULT_IMAGE_URL)
+                # Якщо не вдалося завантажити фото, пробуємо стандартне
+                if not image_data:
+                    image_data = await self.download_image(DEFAULT_IMAGE_URL)
 
-            if image_data:
-                # Публікуємо з зображенням
-                await self.bot.send_photo(
-                    chat_id=CHANNEL_ID,
-                    photo=image_data,
-                    caption=text,
-                    parse_mode='HTML'
-                )
-                logger.info(f"Опубліковано новину з зображенням: {news_item.get('title', '')[:50]}...")
-            else:
-                # Публікуємо без зображення
-                await self.bot.send_message(
-                    chat_id=CHANNEL_ID,
-                    text=text,
-                    parse_mode='HTML',
-                    disable_web_page_preview=False
-                )
-                logger.info(f"Опубліковано новину без зображення: {news_item.get('title', '')[:50]}...")
+                if image_data:
+                    # Публікуємо з зображенням
+                    await self.bot.send_photo(
+                        chat_id=CHANNEL_ID,
+                        photo=image_data,
+                        caption=text,
+                        parse_mode='HTML'
+                    )
+                    logger.info(f"Опубліковано новину з зображенням: {news_item.get('title', '')[:50]}...")
+                else:
+                    # Публікуємо без зображення
+                    await self.bot.send_message(
+                        chat_id=CHANNEL_ID,
+                        text=text,
+                        parse_mode='HTML',
+                        disable_web_page_preview=False
+                    )
+                    logger.info(f"Опубліковано новину без зображення: {news_item.get('title', '')[:50]}...")
             
             return True
             
@@ -184,35 +262,64 @@ class TelegramPublisher:
             
             # Перевіряємо чи є відео
             video_url = news_item.get('video_url', '')
+            video_published = False
             
-            # Якщо є відео, додаємо посилання на нього до тексту
             if video_url:
-                text += f"\n\n🎥 <a href=\"{video_url}\">Дивитися відео</a>"
-                logger.info(f"Додано посилання на відео: {video_url[:50]}...")
+                # Спробуємо опублікувати відео напряму
+                direct_video_url = self.extract_direct_video_url(video_url)
+                
+                # Для прямих відео файлів спробуємо завантажити та надіслати
+                if direct_video_url and direct_video_url.endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+                    try:
+                        video_data = await self.download_video(direct_video_url)
+                        if video_data:
+                            await self.bot.send_video(
+                                chat_id=CHANNEL_ID,
+                                video=video_data,
+                                caption=text,
+                                parse_mode='HTML'
+                            )
+                            logger.info(f"🎥 Опубліковано новину з відео: {news_item.get('title', '')[:50]}...")
+                            video_published = True
+                    except Exception as e:
+                        logger.warning(f"Не вдалося надіслати відео файл: {e}")
+                
+                # Якщо не вдалося надіслати відео файл, додаємо посилання до тексту
+                if not video_published:
+                    if 'youtube.com' in video_url or 'youtu.be' in video_url:
+                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на YouTube</a>"
+                    elif 'vimeo.com' in video_url:
+                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на Vimeo</a>"
+                    elif 'facebook.com' in video_url:
+                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на Facebook</a>"
+                    else:
+                        text += f"\n\n🎥 <a href=\"{video_url}\">Дивитися відео</a>"
+                    logger.info(f"Додано посилання на відео: {video_url[:50]}...")
             
             try:
-                # Публікуємо з зображенням
-                image_url = news_item.get('image_url', '')
-                image_data = await self.download_image(image_url)
-                if not image_data:
-                    image_data = await self.download_image(DEFAULT_IMAGE_URL)
-                
-                if image_data:
-                    await self.bot.send_photo(
-                        chat_id=CHANNEL_ID,
-                        photo=image_data,
-                        caption=text,
-                        parse_mode='HTML'
-                    )
-                    logger.info(f"Опубліковано новину з зображенням: {news_item.get('title', '')[:50]}...")
-                else:
-                    await self.bot.send_message(
-                        chat_id=CHANNEL_ID,
-                        text=text,
-                        parse_mode='HTML',
-                        disable_web_page_preview=False
-                    )
-                    logger.info(f"Опубліковано новину без зображення: {news_item.get('title', '')[:50]}...")
+                # Якщо відео не було опубліковано окремо, публікуємо з зображенням
+                if not video_published:
+                    image_url = news_item.get('image_url', '')
+                    image_data = await self.download_image(image_url)
+                    if not image_data:
+                        image_data = await self.download_image(DEFAULT_IMAGE_URL)
+                    
+                    if image_data:
+                        await self.bot.send_photo(
+                            chat_id=CHANNEL_ID,
+                            photo=image_data,
+                            caption=text,
+                            parse_mode='HTML'
+                        )
+                        logger.info(f"Опубліковано новину з зображенням: {news_item.get('title', '')[:50]}...")
+                    else:
+                        await self.bot.send_message(
+                            chat_id=CHANNEL_ID,
+                            text=text,
+                            parse_mode='HTML',
+                            disable_web_page_preview=False
+                        )
+                        logger.info(f"Опубліковано новину без зображення: {news_item.get('title', '')[:50]}...")
                 
                 published_count += 1
                 break  # Публікуємо лише одну успішну новину за раз
