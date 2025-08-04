@@ -105,7 +105,7 @@ class AirAlertsMonitor:
         """Перевіряє чи потрібно групувати тривоги"""
         if len(new_alerts) >= 3:
             # Перевіряємо чи тривоги почалися в проміжку 1-2 хвилини
-            now = datetime.datetime.utcnow()
+            now = datetime.datetime.now(datetime.timezone.utc)
             alert_times = []
             
             for key in new_alerts:
@@ -196,7 +196,7 @@ class AirAlertsMonitor:
                     return msg
 
                 # --- Надсилання нових подій ---
-                now = datetime.datetime.utcnow()
+                now = datetime.datetime.now(datetime.timezone.utc)
                 
                 # Перевіряємо чи потрібно групувати тривоги
                 if self.should_group_alerts(new_alerts, current_alerts_dict):

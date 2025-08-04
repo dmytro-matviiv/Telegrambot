@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 import json
 import time
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import List, Dict
 import logging
@@ -24,7 +24,11 @@ def parse_published_date(date_str):
     
     try:
         # Спробуємо RFC 2822 формат (найпоширеніший в RSS)
-        return parsedate_to_datetime(date_str)
+        dt = parsedate_to_datetime(date_str)
+        # Якщо дата timezone-naive, припускаємо UTC
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except (ValueError, TypeError):
         pass
     
@@ -52,7 +56,11 @@ def parse_published_date(date_str):
             else:
                 date_str_clean = date_str
             
-            return datetime.strptime(date_str_clean, fmt)
+            dt = datetime.strptime(date_str_clean, fmt)
+            # Якщо дата timezone-naive, припускаємо UTC
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except (ValueError, TypeError):
             continue
     

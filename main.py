@@ -3,7 +3,7 @@ import logging
 import schedule
 import time
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from news_collector import NewsCollector, parse_published_date
 from telegram_publisher import TelegramPublisher
 from air_alerts_monitor import AirAlertsMonitor
@@ -44,7 +44,7 @@ class NewsBot:
             logger.info(f"📰 Знайдено {len(news_list)} нових новин")
 
             # Фільтрація за часом: публікуємо лише ті, яким вже 10-20 хвилин
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             filtered_news = []
             for news in news_list:
                 published_str = news.get('published', '')
@@ -52,6 +52,14 @@ class NewsBot:
                 if published_str:
                     published_time = parse_published_date(published_str)
                 if published_time:
+                    # Переконуємося, що обидві дати мають однакову timezone-aware/naive природу
+                    if published_time.tzinfo is None:
+                        # Якщо published_time timezone-naive, робимо її UTC
+                        published_time = published_time.replace(tzinfo=timezone.utc)
+                    elif now.tzinfo is None:
+                        # Якщо now timezone-naive (не повинно статися), робимо її UTC
+                        now = now.replace(tzinfo=timezone.utc)
+                    
                     age = (now - published_time).total_seconds() / 60
                     if 10 <= age <= 30:
                         filtered_news.append(news)
