@@ -9,6 +9,7 @@ from telegram_publisher import TelegramPublisher
 from air_alerts_monitor import AirAlertsMonitor
 from memorial_messages import MemorialMessageScheduler, schedule_minute_of_silence
 from config import CHECK_INTERVAL, MAX_POSTS_PER_CHECK
+import os
 
 # Налаштування логування
 logging.basicConfig(
@@ -163,6 +164,9 @@ async def main():
     """Головна функція"""
     bot = NewsBot()
     loop = asyncio.get_event_loop()
+    
+    # channel_id має бути визначено тут
+    channel_id = os.getenv("CHANNEL_ID")  # або інший спосіб отримання
     
     try:
         # Тестуємо з'єднання

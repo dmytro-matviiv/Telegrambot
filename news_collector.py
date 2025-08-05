@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def parse_published_date(date_str):
-    """Парсить дату публікації з різних форматів RSS"""
+    """Парсити дату публікації з різних форматів RSS"""
     if not date_str:
         return None
     
@@ -196,7 +196,21 @@ class NewsCollector:
                     continue
             if not feed or not feed.entries:
                 logger.warning(f"🚫 Не вдалося отримати новини з {source_info['name']}")
-                return []
+                # Додаємо заглушку-новину для мертвого джерела
+                stub_news = {
+                    'id': f"{source_key}_stub_{int(time.time())}",
+                    'title': f"⚠️ Новини з джерела '{source_info['name']}' тимчасово недоступні",
+                    'description': f"Офіційне джерело {source_info['name']} ({source_info.get('website', '')}) наразі не надає новини. Спробуємо пізніше.",
+                    'full_text': "",
+                    'link': source_info.get('website', ''),
+                    'image_url': DEFAULT_IMAGE_URL,
+                    'video_url': "",
+                    'source': source_info['name'],
+                    'source_key': source_key,
+                    'published': datetime.now().isoformat(),
+                    'timestamp': datetime.now().isoformat()
+                }
+                return [stub_news]
             # Відсортувати за датою публікації (якщо можливо)
             entries = sorted(feed.entries, key=lambda e: e.get('published_parsed', None) or e.get('updated_parsed', None) or 0, reverse=True)
             for entry in entries:
@@ -550,6 +564,17 @@ class NewsCollector:
                     shuffled_news.append(source_groups[key].popleft())
         all_news = shuffled_news
         # --- Кінець хаотичного чергування ---
+
+        # --- Видаляємо дублікати за посиланням (link) ---
+        unique_links = set()
+        unique_news = []
+        for news in all_news:
+            link = news.get('link', '')
+            if link and link not in unique_links:
+                unique_links.add(link)
+                unique_news.append(news)
+        all_news = unique_news
+        # --- Кінець видалення дублікатів ---
 
         # Логуємо статистику
         logger.info(f"📊 Статистика збору новин:")
