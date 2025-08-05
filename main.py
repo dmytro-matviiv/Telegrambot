@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from news_collector import NewsCollector, parse_published_date
 from telegram_publisher import TelegramPublisher
 from air_alerts_monitor import AirAlertsMonitor
-from memorial_messages import MemorialMessageScheduler
+from memorial_messages import MemorialMessageScheduler, schedule_minute_of_silence
 from config import CHECK_INTERVAL, MAX_POSTS_PER_CHECK
 
 # Налаштування логування
@@ -76,7 +76,7 @@ class NewsBot:
             
             # Позначаємо як опубліковані
             for news_item in news_to_publish:
-                self.collector.mark_as_published(news_item['id'])
+                self.collector.mark_as_published(news_item['id'], news_item.get('source_key', ''))
             
             logger.info(f"✅ Опубліковано {published_count} новин")
             
@@ -162,12 +162,16 @@ class NewsBot:
 async def main():
     """Головна функція"""
     bot = NewsBot()
+    loop = asyncio.get_event_loop()
     
     try:
         # Тестуємо з'єднання
         if not await bot.test_connections():
             logger.error("❌ Тестування з'єднань не пройшло. Перевірте налаштування.")
             return
+        
+        # Додаємо задачу для хвилини мовчання
+        loop.create_task(schedule_minute_of_silence(bot, channel_id))
         
         # Запускаємо бота
         await bot.run_continuous()
@@ -189,4 +193,4 @@ if __name__ == "__main__":
     print("=" * 50)
     
     # Запускаємо головну функцію
-    asyncio.run(main()) 
+    asyncio.run(main())

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import random
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import List
 from telegram_publisher import TelegramPublisher
 
@@ -93,3 +93,21 @@ class MemorialMessageScheduler:
             except Exception as e:
                 logger.error(f"❌ Помилка в моніторингу меморіальних повідомлень: {e}")
                 await asyncio.sleep(60)  # При помилці чекаємо хвилину
+
+async def schedule_minute_of_silence(bot, channel_id):
+    while True:
+        now = datetime.now()
+        target = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        wait_seconds = (target - now).total_seconds()
+        logging.info(f"[Minute of Silence] Next scheduled at {target} (in {wait_seconds} seconds)")
+        await asyncio.sleep(wait_seconds)
+        try:
+            await send_minute_of_silence(bot, channel_id)
+            logging.info("[Minute of Silence] Message sent successfully.")
+        except Exception as e:
+            logging.error(f"[Minute of Silence] Failed to send: {e}")
+
+async def send_minute_of_silence(bot, channel_id):
+    pass  # Реалізуйте відправлення повідомлення тут

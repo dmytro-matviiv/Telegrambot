@@ -10,6 +10,7 @@ import requests
 from config import BOT_TOKEN, CHANNEL_ID, DEFAULT_IMAGE_URL, MAX_TEXT_LENGTH, IMAGE_DOWNLOAD_TIMEOUT
 import random
 from bs4 import BeautifulSoup
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -359,4 +360,72 @@ class TelegramPublisher:
 
     async def close(self):
         """Закриває з'єднання"""
-        await self.session.close() 
+        await self.session.close()
+
+    async def send_news(self, news_item):
+        video_url = news_item.get("video_url")
+        if video_url:
+            try:
+                video_path = await self.download_video(video_url)
+                if video_path:
+                    await self.bot.send_video(
+                        chat_id=CHANNEL_ID,
+                        video=open(video_path, "rb"),
+                        caption=self.format_news_text(news_item),
+                        parse_mode="HTML"
+                    )
+                    logger.info(f"✅ Відео надіслано: {video_url}")
+                    os.remove(video_path)
+                    return True
+                else:
+                    logger.warning(f"⚠️ Не вдалося завантажити відео: {video_url}")
+            except Exception as e:
+                logger.error(f"❌ Помилка при надсиланні відео: {e}")
+        # Якщо немає відео або не вдалося — fallback
+        text = self.format_news_text(news_item)
+        image_url = news_item.get('image_url', '')
+        image_data = await self.download_image(image_url)
+
+        # Якщо не вдалося завантажити фото, пробуємо стандартне
+        if not image_data:
+            image_data = await self.download_image(DEFAULT_IMAGE_URL)
+
+        if image_data:
+            # Публікуємо з зображенням
+            await self.bot.send_photo(
+                chat_id=CHANNEL_ID,
+                photo=image_data,
+                caption=text,
+                parse_mode='HTML'
+            )
+            logger.info(f"Опубліковано новину з зображенням: {news_item.get('title', '')[:50]}...")
+        else:
+            # Публікуємо без зображення
+            await self.bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=text,
+                parse_mode='HTML',
+                disable_web_page_preview=False
+            )
+            logger.info(f"Опубліковано новину без зображення: {news_item.get('title', '')[:50]}...")
+        return False
+
+    async def download_video(self, url):
+        filename = "temp_video.mp4"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        with open(filename, "wb") as f:
+                            while True:
+                                chunk = await resp.content.read(1024*1024)
+                                if not chunk:
+                                    break
+                                f.write(chunk)
+                        return filename
+                    else:
+                        logging.error(f"❌ Не вдалося завантажити відео: {url} (status {resp.status})")
+                        return None
+        except Exception as e:
+            logging.error(f"❌ Помилка при завантаженні відео: {e}")
+            return None

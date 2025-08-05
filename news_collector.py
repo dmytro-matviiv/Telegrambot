@@ -69,24 +69,37 @@ def parse_published_date(date_str):
 
 class NewsCollector:
     def __init__(self):
-        self.published_news = self.load_published_news()
+        published_data = self.load_published_news()
+        self.published_news = published_data['published_news']
+        self.last_source = published_data['last_source']
+        self.last_published_time = published_data['last_published_time']
         self.session = requests.Session()
         self.session.trust_env = False  # Вимикаємо використання проксі з env
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
 
-    def load_published_news(self) -> set:
+    def load_published_news(self) -> dict:
         try:
             with open(PUBLISHED_NEWS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                return set(data.get('published_news', []))
+                return {
+                    'published_news': set(data.get('published_news', [])),
+                    'last_source': data.get('last_source', ''),
+                    'last_published_time': data.get('last_published_time', '')
+                }
         except FileNotFoundError:
-            return set()
+            return {
+                'published_news': set(),
+                'last_source': '',
+                'last_published_time': ''
+            }
 
     def save_published_news(self):
         data = {
             'published_news': list(self.published_news),
+            'last_source': self.last_source,
+            'last_published_time': self.last_published_time,
             'last_updated': datetime.now().isoformat()
         }
         with open(PUBLISHED_NEWS_FILE, 'w', encoding='utf-8') as f:
@@ -450,6 +463,22 @@ class NewsCollector:
             logger.error(f"❌ Помилка при витягуванні відео: {e}")
         return ""
 
+    def is_direct_video(self, video_url: str) -> bool:
+        """Перевіряє чи відео можна дивитися прямо в Telegram"""
+        if not video_url:
+            return False
+        
+        # Прямі відео файли можна дивитися в Telegram
+        if video_url.endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+            return True
+        
+        # YouTube, Vimeo, Facebook - це посилання, не прямі відео
+        if any(platform in video_url.lower() for platform in ['youtube.com', 'youtu.be', 'vimeo.com', 'facebook.com']):
+            return False
+        
+        # Інші відео вважаємо потенційно прямими
+        return True
+
     def collect_all_news(self) -> List[Dict]:
         all_news = []
         dead_sources = []  # Список "мертвих" джерел
@@ -479,29 +508,54 @@ class NewsCollector:
                 logger.error(f"❗ Помилка при зборі новин з {source_key}: {e}")
                 sources_without_news.append((source_key, source_info))
         
-        # Розподіляємо новини з пріоритизацією відео
-        news_with_video = []
-        news_without_video = []
+        # Розподіляємо новини з пріоритизацією прямих відео
+        direct_video_news = []  # Прямі відео (найvищий пріоритет)
+        link_video_news = []    # Відео-посилання (середній пріоритет)
+        no_video_news = []      # Без відео (найнижчий пріоритет)
         
         for source_key, source_info, news_list in sources_with_news:
             for news_item in news_list:
-                if news_item.get('video_url', ''):
-                    news_with_video.append(news_item)
-                    logger.info(f"🎥 Пріоритетна новина з відео від {source_info['name']}: {news_item.get('title', '')[:50]}...")
+                video_url = news_item.get('video_url', '')
+                if video_url:
+                    if self.is_direct_video(video_url):
+                        direct_video_news.append(news_item)
+                        logger.info(f"🎬 ПРІОРИТЕТ: Пряме відео від {source_info['name']}: {news_item.get('title', '')[:50]}...")
+                    else:
+                        link_video_news.append(news_item)
+                        logger.info(f"🎥 Відео-посилання від {source_info['name']}: {news_item.get('title', '')[:50]}...")
                 else:
-                    news_without_video.append(news_item)
+                    no_video_news.append(news_item)
         
-        # Перемішуємо новини в кожній категорії для різноманітності
-        random.shuffle(news_with_video)
-        random.shuffle(news_without_video)
+        # Перемішуємо новини в кожній категорії для різноманітності джерел
+        random.shuffle(direct_video_news)
+        random.shuffle(link_video_news)
+        random.shuffle(no_video_news)
         
-        # Об'єднуємо: спочатку новини з відео, потім без відео
-        all_news = news_with_video + news_without_video
-        
+        # Об'єднуємо: спочатку прямі відео, потім відео-посилання, потім без відео
+        all_news = direct_video_news + link_video_news + no_video_news
+
+        # --- Додаємо хаотичне чергування джерел ---
+        # Групуємо новини за source_key
+        from collections import defaultdict, deque
+        source_groups = defaultdict(deque)
+        for news in all_news:
+            source_groups[news.get('source_key', '')].append(news)
+        # Створюємо хаотичну чергу, по одній новині з кожного джерела, поки є новини
+        shuffled_news = []
+        source_keys = list(source_groups.keys())
+        random.shuffle(source_keys)
+        while any(source_groups.values()):
+            for key in source_keys:
+                if source_groups[key]:
+                    shuffled_news.append(source_groups[key].popleft())
+        all_news = shuffled_news
+        # --- Кінець хаотичного чергування ---
+
         # Логуємо статистику
         logger.info(f"📊 Статистика збору новин:")
-        logger.info(f"   🎥 Новини з відео: {len(news_with_video)}")
-        logger.info(f"   📰 Новини без відео: {len(news_without_video)}")
+        logger.info(f"   🎬 Прямі відео (пріоритет 1): {len(direct_video_news)}")
+        logger.info(f"   🎥 Відео-посилання (пріоритет 2): {len(link_video_news)}")
+        logger.info(f"   📰 Новини без відео (пріоритет 3): {len(no_video_news)}")
         logger.info(f"   ✅ Активні джерела: {len(sources_with_news)}")
         logger.info(f"   ❌ Неактивні джерела: {len(sources_without_news)}")
         
@@ -511,10 +565,37 @@ class NewsCollector:
                 logger.warning(f"{src['name']} | RSS: {src['rss']} | Сайт: {src['website']}")
             logger.warning("===== КІНЕЦЬ СПИСКУ МЕРТВИХ ДЖЕРЕЛ =====\n")
         
-        # Сортуємо за часом публікації, зберігаючи пріоритет відео
+        # Фільтруємо новини, щоб уникнути повторів з одного джерела підряд
+        filtered_news = []
+        if all_news:
+            # Додаємо першу новину
+            filtered_news.append(all_news[0])
+            
+            # Для решти новин перевіряємо джерело
+            for news_item in all_news[1:]:
+                current_source = news_item.get('source_key', '')
+                
+                # Якщо це не те саме джерело, що й останнє опубліковане, додаємо
+                if current_source != self.last_source:
+                    filtered_news.append(news_item)
+                    break  # Беремо тільки одну новину за раз
+            
+            # Якщо не знайшли новину з іншого джерела, беремо першу доступну
+            if len(filtered_news) == 1 and len(all_news) > 1:
+                filtered_news.append(all_news[1])
+        
+        # Сортуємо за пріоритетом відео та часом (залишаємо для fallback)
         def get_sort_key(news_item):
-            # Відео новини першими
-            video_priority = 0 if news_item.get('video_url', '') else 1
+            video_url = news_item.get('video_url', '')
+            
+            # Пріоритет: 0 = пряме відео, 1 = відео-посилання, 2 = без відео
+            if video_url:
+                if self.is_direct_video(video_url):
+                    video_priority = 0  # Найвищий пріоритет
+                else:
+                    video_priority = 1  # Середній пріоритет
+            else:
+                video_priority = 2  # Найнижчий пріоритет
             
             # Парсимо дату публікації
             published_str = news_item.get('published', '')
@@ -527,12 +608,16 @@ class NewsCollector:
             # Якщо дати немає, ставимо в кінець
             return (video_priority, 0)
         
-        all_news.sort(key=get_sort_key)
+        # filtered_news.sort(key=get_sort_key)  # <-- більше не сортуємо тут, бо вже хаотично
+        all_news = filtered_news
         
         return all_news
 
-    def mark_as_published(self, news_id: str):
+    def mark_as_published(self, news_id: str, source_key: str = ''):
         self.published_news.add(news_id)
+        if source_key:
+            self.last_source = source_key
+            self.last_published_time = datetime.now().isoformat()
         self.save_published_news()
 
     def cleanup_old_news(self, days: int = 7):
