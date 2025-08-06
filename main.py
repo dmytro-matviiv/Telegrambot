@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from news_collector import NewsCollector, parse_published_date
 from telegram_publisher import TelegramPublisher
 from air_alerts_monitor import AirAlertsMonitor
-from memorial_messages import MemorialMessageScheduler, schedule_minute_of_silence
+from memorial_messages import MemorialMessageScheduler, schedule_minute_of_silence, send_memorial_message_daily
 from config import CHECK_INTERVAL, MAX_POSTS_PER_CHECK
 import os
 
@@ -181,8 +181,8 @@ async def main():
             logger.error("❌ Тестування з'єднань не пройшло. Перевірте налаштування.")
             return
         
-        # Додаємо задачу для хвилини мовчання
-        loop.create_task(schedule_minute_of_silence(bot, channel_id))
+        # Запускаємо задачу для меморіального повідомлення о 9:00
+        loop.create_task(send_memorial_message_daily(bot.publisher))
         
         # Запускаємо бота
         await bot.run_continuous()
