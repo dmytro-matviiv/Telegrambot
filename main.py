@@ -68,9 +68,16 @@ class NewsBot:
                     # Якщо немає дати — додаємо, але в кінець списку
                     filtered_news.append(news)
 
+            # Додаємо фільтрацію: залишаємо лише новини з валідним фото
+            filtered_news_with_image = []
+            for news in filtered_news:
+                image_url = news.get('image_url', '')
+                if image_url and image_url != 'default_ua_news.jpg' and image_url != '':
+                    filtered_news_with_image.append(news)
+
             # Обмежуємо кількість публікацій за раз
             # Пріоритизація відео та перемішування джерел тепер відбувається в NewsCollector
-            news_to_publish = filtered_news[:MAX_POSTS_PER_CHECK]
+            news_to_publish = filtered_news_with_image[:MAX_POSTS_PER_CHECK]
             
             # Публікуємо новини
             published_count = await self.publisher.publish_multiple_news(news_to_publish)
