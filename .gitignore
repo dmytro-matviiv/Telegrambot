@@ -8,6 +8,7 @@ venv310/
 
 # База даних опублікованих новин        
 published_news.json
+memorial_last_sent.json
 
 # Python
 __pycache__/

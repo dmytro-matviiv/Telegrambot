@@ -14,7 +14,7 @@ class MemorialMessageScheduler:
     def __init__(self, publisher: TelegramPublisher):
         self.publisher = publisher
         self.target_time = time(9, 0)  # 9:00 ранку
-        self.last_sent_date = None
+        self.last_sent_date = self.load_last_sent_date()
         
         # Різноманітні тексти для меморіальних повідомлень
         self.memorial_templates = [
@@ -39,6 +39,28 @@ class MemorialMessageScheduler:
             "🕯️ О дев'ятій ранку згадуємо наших полеглих захисників.\n\n💔 Вони боронили Україну від тих, хто хотів знищити нашу державу.\n\n🙏 Їхня жертва не була марною. Ми переможемо! Слава Україні! 🇺🇦"
         ]
     
+    def load_last_sent_date(self):
+        """Завантажує дату останнього надісланого повідомлення"""
+        try:
+            import json
+            with open('memorial_last_sent.json', 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                date_str = data.get('last_sent_date')
+                if date_str:
+                    return datetime.strptime(date_str, '%Y-%m-%d').date()
+        except (FileNotFoundError, json.JSONDecodeError, ValueError):
+            pass
+        return None
+    
+    def save_last_sent_date(self, date):
+        """Зберігає дату останнього надісланого повідомлення"""
+        try:
+            import json
+            with open('memorial_last_sent.json', 'w', encoding='utf-8') as f:
+                json.dump({'last_sent_date': date.strftime('%Y-%m-%d')}, f, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Помилка збереження дати меморіального повідомлення: {e}")
+    
     def get_random_memorial_message(self) -> str:
         """Повертає випадкове меморіальне повідомлення"""
         return random.choice(self.memorial_templates)
@@ -51,8 +73,8 @@ class MemorialMessageScheduler:
         current_time = now.time()
 
         # Перевіряємо, чи час між 9:00 та 9:30 (вікно для відправки)
-        if not (time(0, 0) <= current_time <= time(23, 59)):
-            logger.info(f"[Minute of Silence] Зараз {current_time}, не в вікні 9:00-9:30")
+        if not (time(9, 0) <= current_time <= time(9, 30)):
+            logger.debug(f"[Minute of Silence] Зараз {current_time}, не в вікні 9:00-9:30")
             return False
 
         # Перевіряємо, чи вже надсилали сьогодні
@@ -69,7 +91,9 @@ class MemorialMessageScheduler:
             success = await self.publisher.send_simple_message(message)
             
             if success:
-                self.last_sent_date = datetime.now().date()
+                current_date = datetime.now().date()
+                self.last_sent_date = current_date
+                self.save_last_sent_date(current_date)
                 logger.info("✅ Меморіальне повідомлення надіслано успішно")
                 return True
             else:

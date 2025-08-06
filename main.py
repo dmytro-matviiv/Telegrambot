@@ -51,33 +51,70 @@ class NewsBot:
                 published_str = news.get('published', '')
                 published_time = None
                 if published_str:
-                    published_time = parse_published_date(published_str)
+                    try:
+                        published_time = parse_published_date(published_str)
+                    except Exception as e:
+                        logger.warning(f"Помилка парсингу дати '{published_str}': {e}")
+                        published_time = None
+                
                 if published_time:
                     # Переконуємося, що обидві дати мають однакову timezone-aware/naive природу
                     if published_time.tzinfo is None:
                         # Якщо published_time timezone-naive, робимо її UTC
                         published_time = published_time.replace(tzinfo=timezone.utc)
-                    elif now.tzinfo is None:
-                        # Якщо now timezone-naive (не повинно статися), робимо її UTC
-                        now = now.replace(tzinfo=timezone.utc)
                     
-                    age = (now - published_time).total_seconds() / 60
-                    if 10 <= age <= 30:
+                    try:
+                        age = (now - published_time).total_seconds() / 60
+                        if 1 <= age <= 120:  # Розширюємо вікно до 1-120 хвилин
+                            filtered_news.append(news)
+                        else:
+                            logger.debug(f"⏩ Новина застаріла: {age:.1f} хв - {news.get('title', '')[:30]}...")
+                    except Exception as e:
+                        logger.warning(f"Помилка обчислення віку новини: {e}")
+                        # Якщо не можемо обчислити вік, додаємо новину
                         filtered_news.append(news)
                 else:
                     # Якщо немає дати — додаємо, але в кінець списку
                     filtered_news.append(news)
 
+            logger.info(f"⏰ Після фільтрації за часом: {len(filtered_news)} новин")
+
             # Додаємо фільтрацію: залишаємо лише новини з валідним фото
             filtered_news_with_image = []
             for news in filtered_news:
                 image_url = news.get('image_url', '')
-                if image_url and image_url != 'default_ua_news.jpg' and image_url != '':
+                if image_url:  # Включаємо всі новини з будь-яким фото, включаючи дефолтне
                     filtered_news_with_image.append(news)
+                else:
+                    logger.debug(f"⏩ Новина без зображення: {news.get('title', '')[:30]}...")
 
+            logger.info(f"🖼️ Після фільтрації за зображенням: {len(filtered_news_with_image)} новин")
+
+            # Пріоритизуємо новини з відео
+            news_with_video = []
+            news_without_video = []
+            
+            for news in filtered_news_with_image:
+                video_url = news.get('video_url', '')
+                if video_url:
+                    news_with_video.append(news)
+                else:
+                    news_without_video.append(news)
+            
+            # Сортуємо: спочатку новини з відео, потім без
+            prioritized_news = news_with_video + news_without_video
+            
+            if news_with_video:
+                logger.info(f"🎥 Знайдено {len(news_with_video)} новин з відео (пріоритетні)")
+            
             # Обмежуємо кількість публікацій за раз
-            # Пріоритизація відео та перемішування джерел тепер відбувається в NewsCollector
-            news_to_publish = filtered_news_with_image[:MAX_POSTS_PER_CHECK]
+            news_to_publish = prioritized_news[:MAX_POSTS_PER_CHECK]
+            
+            logger.info(f"📤 Готово до публікації: {len(news_to_publish)} новин")
+            
+            if not news_to_publish:
+                logger.warning("⚠️ Немає новин для публікації після фільтрації")
+                return
             
             # Публікуємо новини
             published_count = await self.publisher.publish_multiple_news(news_to_publish)
@@ -181,8 +218,7 @@ async def main():
             logger.error("❌ Тестування з'єднань не пройшло. Перевірте налаштування.")
             return
         
-        # Запускаємо задачу для меморіального повідомлення о 9:00
-        loop.create_task(send_memorial_message_daily(bot.publisher))
+        # Меморіальні повідомлення обробляються в run_continuous()
         
         # Запускаємо бота
         await bot.run_continuous()

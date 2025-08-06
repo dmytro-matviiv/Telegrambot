@@ -44,6 +44,7 @@ class TelegramPublisher:
             # Перевіряємо розмір відео перед завантаженням
             async with self.session.head(video_url, timeout=10) as response:
                 if response.status != 200:
+                    logger.warning(f"Не вдалося отримати заголовки відео: {response.status}")
                     return None
                 
                 content_length = response.headers.get('content-length')
@@ -51,12 +52,27 @@ class TelegramPublisher:
                     logger.warning(f"Відео занадто велике: {content_length} bytes")
                     return None
                 
+                # Перевіряємо content-type
+                content_type = response.headers.get('content-type', '').lower()
+                if not any(video_type in content_type for video_type in ['video/', 'application/octet-stream']):
+                    logger.warning(f"URL не є відео файлом: {content_type}")
+                    return None
+                
+            # Завантажуємо відео
             async with self.session.get(video_url, timeout=60) as response:
                 if response.status == 200:
-                    return await response.read()
+                    video_data = await response.read()
+                    if len(video_data) > 50 * 1024 * 1024:  # Додаткова перевірка розміру
+                        logger.warning(f"Відео занадто велике після завантаження: {len(video_data)} bytes")
+                        return None
+                    logger.info(f"✅ Відео успішно завантажено: {len(video_data)} bytes")
+                    return video_data
                 else:
                     logger.warning(f"Не вдалося завантажити відео: {response.status}")
                     return None
+        except asyncio.TimeoutError:
+            logger.error(f"Таймаут при завантаженні відео: {video_url}")
+            return None
         except Exception as e:
             logger.error(f"Помилка при завантаженні відео: {e}")
             return None
@@ -67,37 +83,57 @@ class TelegramPublisher:
             if not video_url:
                 return None
             
-            # Для YouTube відео
-            if 'youtube.com' in video_url or 'youtu.be' in video_url:
-                # YouTube відео не можна завантажити напряму, повертаємо оригінальний URL
+            # Розширений список платформ, які не підтримують пряме завантаження
+            embed_platforms = [
+                'youtube.com', 'youtu.be', 'vimeo.com', 'facebook.com',
+                'dailymotion.com', 'rutube.ru', 'vk.com', 'ok.ru'
+            ]
+            
+            # Для embed платформ повертаємо оригінальний URL
+            if any(platform in video_url.lower() for platform in embed_platforms):
                 return video_url
             
-            # Для Vimeo відео
-            if 'vimeo.com' in video_url:
-                return video_url
+            # Для українських новинних сайтів з відео
+            ukrainian_video_platforms = [
+                'tsn.ua', 'espreso.tv', '24tv.ua', 'hromadske.ua',
+                'suspilne.media', 'pravda.com.ua', 'ukrinform.ua'
+            ]
             
-            # Для Facebook відео
-            if 'facebook.com' in video_url:
+            if any(platform in video_url.lower() for platform in ukrainian_video_platforms):
                 return video_url
             
             # Для прямих відео файлів
             if video_url.endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
                 return video_url
             
-            # Для iframe посилань, спробуємо витягти src
+            # Для iframe посилань, спробуємо витягнути src
             if 'iframe' in video_url.lower():
                 try:
                     import re
                     src_match = re.search(r'src=["\']([^"\']+)["\']', video_url)
                     if src_match:
-                        return src_match.group(1)
-                except:
-                    pass
+                        extracted_url = src_match.group(1)
+                        # Перевіряємо чи це не embed платформа
+                        if not any(platform in extracted_url.lower() for platform in embed_platforms):
+                            return extracted_url
+                except Exception as e:
+                    logger.warning(f"Помилка при витягуванні src з iframe: {e}")
+            
+            # Спробуємо знайти прямий відео файл в URL
+            try:
+                import re
+                # Шукаємо прямий відео файл в URL
+                video_file_pattern = r'https?://[^\s<>"]*\.(mp4|avi|mov|mkv|webm)(\?[^\s<>"]*)?'
+                match = re.search(video_file_pattern, video_url)
+                if match:
+                    return match.group(0)
+            except Exception as e:
+                logger.warning(f"Помилка при пошуку відео файлу: {e}")
             
             return video_url
             
         except Exception as e:
-            logger.error(f"Помилка при витягуванні URL відео: {e}")
+            logger.error(f"Помилка при витягуванні прямого URL відео: {e}")
             return video_url
 
     def format_news_text(self, news_item: Dict) -> str:
@@ -187,7 +223,9 @@ class TelegramPublisher:
                 direct_video_url = self.extract_direct_video_url(video_url)
                 
                 # Для прямих відео файлів спробуємо завантажити та надіслати
-                if direct_video_url and direct_video_url.endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+                if direct_video_url and (direct_video_url.endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')) or 
+                                       'cdn' in direct_video_url.lower() or 'video' in direct_video_url.lower() or
+                                       'media' in direct_video_url.lower() or 'stream' in direct_video_url.lower()):
                     try:
                         video_data = await self.download_video(direct_video_url)
                         if video_data:
@@ -195,23 +233,54 @@ class TelegramPublisher:
                                 chat_id=CHANNEL_ID,
                                 video=video_data,
                                 caption=text,
-                                parse_mode='HTML'
+                                parse_mode='HTML',
+                                supports_streaming=True
                             )
                             logger.info(f"🎥 Опубліковано новину з відео: {news_item.get('title', '')[:50]}...")
                             video_published = True
                     except Exception as e:
                         logger.warning(f"Не вдалося надіслати відео файл: {e}")
+                        # Спробуємо надіслати як документ якщо відео не підтримується
+                        try:
+                            await self.bot.send_document(
+                                chat_id=CHANNEL_ID,
+                                document=video_data,
+                                caption=text,
+                                parse_mode='HTML'
+                            )
+                            logger.info(f"📎 Опубліковано новину з відео як документ: {news_item.get('title', '')[:50]}...")
+                            video_published = True
+                        except Exception as e2:
+                            logger.warning(f"Не вдалося надіслати відео як документ: {e2}")
                 
                 # Якщо не вдалося надіслати відео файл, додаємо посилання до тексту
                 if not video_published:
-                    if 'youtube.com' in video_url or 'youtu.be' in video_url:
-                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на YouTube</a>"
-                    elif 'vimeo.com' in video_url:
-                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на Vimeo</a>"
-                    elif 'facebook.com' in video_url:
-                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на Facebook</a>"
-                    else:
+                    # Розширений список платформ з відповідними іконками
+                    video_platforms = {
+                        'youtube.com': ('🎬', 'YouTube'), 'youtu.be': ('🎬', 'YouTube'),
+                        'vimeo.com': ('🎬', 'Vimeo'), 'facebook.com': ('📱', 'Facebook'),
+                        'dailymotion.com': ('🎬', 'Dailymotion'), 'rutube.ru': ('🎬', 'Rutube'),
+                        'vk.com': ('📱', 'VK'), 'ok.ru': ('📱', 'OK.ru'),
+                        'tsn.ua': ('📺', 'ТСН'), 'espreso.tv': ('📺', 'Еспресо'),
+                        '24tv.ua': ('📺', '24 Канал'), 'hromadske.ua': ('📺', 'Громадське'),
+                        'suspilne.media': ('📺', 'Суспільне'), 'pravda.com.ua': ('📰', 'Правда'),
+                        'ukrinform.ua': ('📰', 'Укрінформ'), 'nv.ua': ('📰', 'НВ'),
+                        'zn.ua': ('📰', 'Зеркало недели'), 'fakty.com.ua': ('📺', 'Факти ICTV'),
+                        'obozrevatel.com': ('📰', 'Обозреватель'), 'korrespondent.net': ('📰', 'Корреспондент'),
+                        'ukraina.ru': ('📰', 'Україна.ру'), 'gordonua.com': ('📺', 'ГОРДОН'),
+                        'rbc.ua': ('📰', 'РБК-Україна')
+                    }
+                    
+                    platform_found = False
+                    for platform, (icon, name) in video_platforms.items():
+                        if platform in video_url.lower():
+                            text += f"\n\n{icon} <a href=\"{video_url}\">Дивитися на {name}</a>"
+                            platform_found = True
+                            break
+                    
+                    if not platform_found:
                         text += f"\n\n🎥 <a href=\"{video_url}\">Дивитися відео</a>"
+                    
                     logger.info(f"Додано посилання на відео: {video_url[:50]}...")
             
             # Якщо відео не було опубліковано окремо, публікуємо з зображенням
@@ -270,7 +339,9 @@ class TelegramPublisher:
                 direct_video_url = self.extract_direct_video_url(video_url)
                 
                 # Для прямих відео файлів спробуємо завантажити та надіслати
-                if direct_video_url and direct_video_url.endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+                if direct_video_url and (direct_video_url.endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')) or 
+                                       'cdn' in direct_video_url.lower() or 'video' in direct_video_url.lower() or
+                                       'media' in direct_video_url.lower() or 'stream' in direct_video_url.lower()):
                     try:
                         video_data = await self.download_video(direct_video_url)
                         if video_data:
@@ -278,23 +349,54 @@ class TelegramPublisher:
                                 chat_id=CHANNEL_ID,
                                 video=video_data,
                                 caption=text,
-                                parse_mode='HTML'
+                                parse_mode='HTML',
+                                supports_streaming=True
                             )
                             logger.info(f"🎥 Опубліковано новину з відео: {news_item.get('title', '')[:50]}...")
                             video_published = True
                     except Exception as e:
                         logger.warning(f"Не вдалося надіслати відео файл: {e}")
+                        # Спробуємо надіслати як документ якщо відео не підтримується
+                        try:
+                            await self.bot.send_document(
+                                chat_id=CHANNEL_ID,
+                                document=video_data,
+                                caption=text,
+                                parse_mode='HTML'
+                            )
+                            logger.info(f"📎 Опубліковано новину з відео як документ: {news_item.get('title', '')[:50]}...")
+                            video_published = True
+                        except Exception as e2:
+                            logger.warning(f"Не вдалося надіслати відео як документ: {e2}")
                 
-                # Якщо не вдалося надіслати відео файл, додаємо посилання до тексту
+                # Додаємо посилання на відео до тексту для всіх типів відео
                 if not video_published:
-                    if 'youtube.com' in video_url or 'youtu.be' in video_url:
-                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на YouTube</a>"
-                    elif 'vimeo.com' in video_url:
-                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на Vimeo</a>"
-                    elif 'facebook.com' in video_url:
-                        text += f"\n\n🎬 <a href=\"{video_url}\">Дивитися на Facebook</a>"
-                    else:
+                    # Розширений список платформ з відповідними іконками
+                    video_platforms = {
+                        'youtube.com': ('🎬', 'YouTube'), 'youtu.be': ('🎬', 'YouTube'),
+                        'vimeo.com': ('🎬', 'Vimeo'), 'facebook.com': ('📱', 'Facebook'),
+                        'dailymotion.com': ('🎬', 'Dailymotion'), 'rutube.ru': ('🎬', 'Rutube'),
+                        'vk.com': ('📱', 'VK'), 'ok.ru': ('📱', 'OK.ru'),
+                        'tsn.ua': ('📺', 'ТСН'), 'espreso.tv': ('📺', 'Еспресо'),
+                        '24tv.ua': ('📺', '24 Канал'), 'hromadske.ua': ('📺', 'Громадське'),
+                        'suspilne.media': ('📺', 'Суспільне'), 'pravda.com.ua': ('📰', 'Правда'),
+                        'ukrinform.ua': ('📰', 'Укрінформ'), 'nv.ua': ('📰', 'НВ'),
+                        'zn.ua': ('📰', 'Зеркало недели'), 'fakty.com.ua': ('📺', 'Факти ICTV'),
+                        'obozrevatel.com': ('📰', 'Обозреватель'), 'korrespondent.net': ('📰', 'Корреспондент'),
+                        'ukraina.ru': ('📰', 'Україна.ру'), 'gordonua.com': ('📺', 'ГОРДОН'),
+                        'rbc.ua': ('📰', 'РБК-Україна')
+                    }
+                    
+                    platform_found = False
+                    for platform, (icon, name) in video_platforms.items():
+                        if platform in video_url.lower():
+                            text += f"\n\n{icon} <a href=\"{video_url}\">Дивитися на {name}</a>"
+                            platform_found = True
+                            break
+                    
+                    if not platform_found:
                         text += f"\n\n🎥 <a href=\"{video_url}\">Дивитися відео</a>"
+                    
                     logger.info(f"Додано посилання на відео: {video_url[:50]}...")
             
             try:

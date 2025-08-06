@@ -100,7 +100,7 @@ class NewsCollector:
             'published_news': list(self.published_news),
             'last_source': self.last_source,
             'last_published_time': self.last_published_time,
-            'last_updated': datetime.now().isoformat()
+            'last_updated': datetime.now(timezone.utc).isoformat()
         }
         with open(PUBLISHED_NEWS_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -207,8 +207,8 @@ class NewsCollector:
                     'video_url': "",
                     'source': source_info['name'],
                     'source_key': source_key,
-                    'published': datetime.now().isoformat(),
-                    'timestamp': datetime.now().isoformat()
+                    'published': datetime.now(timezone.utc).isoformat(),
+                    'timestamp': datetime.now(timezone.utc).isoformat()
                 }
                 return [stub_news]
             # Відсортувати за датою публікації (якщо можливо)
@@ -273,6 +273,8 @@ class NewsCollector:
                 if not published:
                     continue
                 published_dt = datetime.fromtimestamp(time.mktime(published))
+                # Конвертуємо в timezone-aware для порівняння
+                published_dt = published_dt.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) - published_dt > timedelta(hours=5):
                     logger.info(f"⏩ Пропускаємо новину: старіша за 5 годин")
                     return []
@@ -339,7 +341,7 @@ class NewsCollector:
                     'source': source_info['name'],
                     'source_key': source_key,
                     'published': entry.get('published', ''),
-                    'timestamp': datetime.now().isoformat()
+                    'timestamp': datetime.now(timezone.utc).isoformat()
                 }
                 return [news_item]  # Повертаємо лише одну новину
             return []  # Якщо немає нової новини
@@ -440,18 +442,30 @@ class NewsCollector:
             # Перевіряємо опис на відео теги
             if entry.get('summary'):
                 soup = BeautifulSoup(entry['summary'], 'html.parser')
+                
+                # Шукаємо відео теги
                 video = soup.find('video')
                 if video and video.get('src'):
                     logger.info(f"🎥 Знайдено відео тег в описі: {video['src'][:50]}...")
                     return video['src']
                 
                 # Перевіряємо iframe з відео (YouTube, Vimeo, тощо)
-                iframe = soup.find('iframe')
-                if iframe and iframe.get('src'):
-                    src = iframe['src']
-                    if 'youtube.com' in src or 'youtu.be' in src or 'vimeo.com' in src:
-                        logger.info(f"🎥 Знайдено iframe відео в описі: {src[:50]}...")
-                        return src
+                iframes = soup.find_all('iframe')
+                for iframe in iframes:
+                    src = iframe.get('src')
+                    if src:
+                        # Розширюємо список підтримуваних платформ
+                        video_platforms = [
+                            'youtube.com', 'youtu.be', 'vimeo.com', 'facebook.com',
+                            'dailymotion.com', 'rutube.ru', 'vk.com', 'ok.ru',
+                            'tsn.ua', 'espreso.tv', '24tv.ua', 'hromadske.ua',
+                            'suspilne.media', 'pravda.com.ua', 'ukrinform.ua',
+                            'nv.ua', 'zn.ua', 'fakty.com.ua', 'obozrevatel.com',
+                            'korrespondent.net', 'liga.net', 'ukraina.ru', 'gordonua.com'
+                        ]
+                        if any(platform in src.lower() for platform in video_platforms):
+                            logger.info(f"🎥 Знайдено iframe відео в описі: {src[:50]}...")
+                            return src
 
             # Перевіряємо повну статтю на відео
             if article_url:
@@ -459,16 +473,40 @@ class NewsCollector:
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.content, 'html.parser')
                     
-                    # Шукаємо відео теги
+                    # Розширений список селекторів для відео
                     video_selectors = [
                         'video',
                         'iframe[src*="youtube"]',
                         'iframe[src*="vimeo"]',
                         'iframe[src*="dailymotion"]',
+                        'iframe[src*="facebook"]',
+                        'iframe[src*="rutube"]',
+                        'iframe[src*="vk"]',
+                        'iframe[src*="ok"]',
+                        'iframe[src*="tsn"]',
+                        'iframe[src*="espreso"]',
+                        'iframe[src*="24tv"]',
+                        'iframe[src*="hromadske"]',
+                        'iframe[src*="suspilne"]',
+                        'iframe[src*="pravda"]',
+                        'iframe[src*="ukrinform"]',
+                        'iframe[src*="nv"]',
+                        'iframe[src*="zn"]',
+                        'iframe[src*="fakty"]',
+                        'iframe[src*="obozrevatel"]',
+                        'iframe[src*="korrespondent"]',
+                        'iframe[src*="liga"]',
+                        'iframe[src*="ukraina"]',
+                        'iframe[src*="gordon"]',
                         '.video-container iframe',
                         '.video iframe',
                         'article iframe',
-                        '.content iframe'
+                        '.content iframe',
+                        '.article iframe',
+                        '.post iframe',
+                        '.entry iframe',
+                        '[class*="video"] iframe',
+                        '[class*="player"] iframe'
                     ]
                     
                     for selector in video_selectors:
@@ -482,6 +520,43 @@ class NewsCollector:
                                     src = 'https://' + article_url.split('/')[2] + src
                                 logger.info(f"🎥 Знайдено відео в статті ({selector}): {src[:50]}...")
                                 return src
+                    
+                    # Додатково шукаємо відео в тексті статті
+                    article_text = soup.get_text()
+                    video_patterns = [
+                        r'https?://[^\s<>"]*\.(mp4|avi|mov|mkv|webm)',
+                        r'https?://[^\s<>"]*youtube\.com[^\s<>"]*',
+                        r'https?://[^\s<>"]*youtu\.be[^\s<>"]*',
+                        r'https?://[^\s<>"]*vimeo\.com[^\s<>"]*',
+                        r'https?://[^\s<>"]*dailymotion\.com[^\s<>"]*',
+                        r'https?://[^\s<>"]*facebook\.com[^\s<>"]*',
+                        r'https?://[^\s<>"]*rutube\.ru[^\s<>"]*',
+                        r'https?://[^\s<>"]*vk\.com[^\s<>"]*',
+                        r'https?://[^\s<>"]*ok\.ru[^\s<>"]*',
+                        r'https?://[^\s<>"]*tsn\.ua[^\s<>"]*',
+                        r'https?://[^\s<>"]*espreso\.tv[^\s<>"]*',
+                        r'https?://[^\s<>"]*24tv\.ua[^\s<>"]*',
+                        r'https?://[^\s<>"]*hromadske\.ua[^\s<>"]*',
+                        r'https?://[^\s<>"]*suspilne\.media[^\s<>"]*',
+                        r'https?://[^\s<>"]*pravda\.com\.ua[^\s<>"]*',
+                        r'https?://[^\s<>"]*ukrinform\.ua[^\s<>"]*',
+                        r'https?://[^\s<>"]*nv\.ua[^\s<>"]*',
+                        r'https?://[^\s<>"]*zn\.ua[^\s<>"]*',
+                        r'https?://[^\s<>"]*fakty\.com\.ua[^\s<>"]*',
+                        r'https?://[^\s<>"]*obozrevatel\.com[^\s<>"]*',
+                        r'https?://[^\s<>"]*korrespondent\.net[^\s<>"]*',
+                        r'https?://[^\s<>"]*ukraina\.ru[^\s<>"]*',
+                        r'https?://[^\s<>"]*gordonua\.com[^\s<>"]*',
+                        r'https?://[^\s<>"]*rbc\.ua[^\s<>"]*'
+                    ]
+                    
+                    for pattern in video_patterns:
+                        matches = re.findall(pattern, article_text)
+                        if matches:
+                            video_url = matches[0] if isinstance(matches[0], str) else matches[0][0]
+                            logger.info(f"🎥 Знайдено відео посилання в тексті: {video_url[:50]}...")
+                            return video_url
+                            
         except Exception as e:
             logger.error(f"❌ Помилка при витягуванні відео: {e}")
         return ""
@@ -636,6 +711,9 @@ class NewsCollector:
             if published_str:
                 published_dt = parse_published_date(published_str)
                 if published_dt:
+                    # Конвертуємо в timestamp без timezone
+                    if published_dt.tzinfo:
+                        published_dt = published_dt.replace(tzinfo=None)
                     timestamp = time.mktime(published_dt.timetuple())
                     return (video_priority, -timestamp)
             
@@ -651,11 +729,11 @@ class NewsCollector:
         self.published_news.add(news_id)
         if source_key:
             self.last_source = source_key
-            self.last_published_time = datetime.now().isoformat()
+            self.last_published_time = datetime.now(timezone.utc).isoformat()
         self.save_published_news()
 
     def cleanup_old_news(self, days: int = 7):
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         old_news = set()
 
         # Це місце для реалізації очищення (можна додати за потреби)

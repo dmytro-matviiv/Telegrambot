@@ -9,7 +9,7 @@ CHANNEL_ID = os.getenv('CHANNEL_ID')
 
 # Джерела новин (RSS та веб-сайти)
 NEWS_SOURCES = {
-    # Офіційні українські джерела
+    # Офіційні українські джерела з відео
     'tsn': {
         'name': 'ТСН',
         'rss': 'https://tsn.ua/rss',
@@ -32,7 +32,7 @@ NEWS_SOURCES = {
     },
     'unian': {
         'name': 'УНІАН',
-        'rss': 'https://www.unian.ua/static/rss/all.xml',
+        'rss': 'https://www.unian.ua/rss',
         'website': 'https://www.unian.ua'
     },
     'pravda': {
@@ -40,42 +40,68 @@ NEWS_SOURCES = {
         'rss': 'https://www.pravda.com.ua/rss/',
         'website': 'https://www.pravda.com.ua'
     },
-    'liga': {
-        'name': 'Ліга.net',
-        'rss': 'https://www.liga.net/news/all/rss.xml',
-        'website': 'https://www.liga.net'
-    },
     'radiosvoboda': {
         'name': 'Радіо Свобода',
         'rss': 'https://www.radiosvoboda.org/api/zrqiteuuir',
         'website': 'https://www.radiosvoboda.org'
-    },
-    'suspilne': {
-        'name': 'Суспільне Новини',
-        'rss': 'https://suspilne.media/rss/news.xml',
-        'website': 'https://suspilne.media'
     },
     'interfax': {
         'name': 'Інтерфакс-Україна',
         'rss': 'https://ua.interfax.com.ua/news/general.rss',
         'website': 'https://ua.interfax.com.ua'
     },
-    'novynarnia': {
-        'name': 'Новинарня',
-        'rss': 'https://novynarnia.com/feed/',
-        'website': 'https://novynarnia.com'
-    },
-
     'channel24': {
         'name': '24 Канал',
         'rss': 'https://24tv.ua/rss/all.xml',
         'website': 'https://24tv.ua'
+    },
+    
+    # Надійні джерела з кращою підтримкою відео
+    'nv': {
+        'name': 'НВ',
+        'rss': 'https://nv.ua/rss.xml',
+        'website': 'https://nv.ua'
+    },
+    'zn': {
+        'name': 'Зеркало недели',
+        'rss': 'https://zn.ua/rss',
+        'website': 'https://zn.ua'
+    },
+    'fakty': {
+        'name': 'Факти ICTV',
+        'rss': 'https://fakty.com.ua/rss',
+        'website': 'https://fakty.com.ua'
+    },
+    'obozrevatel': {
+        'name': 'Обозреватель',
+        'rss': 'https://obozrevatel.com/rss',
+        'website': 'https://obozrevatel.com'
+    },
+    'korrespondent': {
+        'name': 'Корреспондент',
+        'rss': 'https://korrespondent.net/rss',
+        'website': 'https://korrespondent.net'
+    },
+    'ukraine': {
+        'name': 'Україна.ру',
+        'rss': 'https://ukraina.ru/rss',
+        'website': 'https://ukraina.ru'
+    },
+    'gordon': {
+        'name': 'ГОРДОН',
+        'rss': 'https://gordonua.com/rss',
+        'website': 'https://gordonua.com'
+    },
+    'rbc': {
+        'name': 'РБК-Україна',
+        'rss': 'https://www.rbc.ua/rss',
+        'website': 'https://www.rbc.ua'
     }
 }
 
 # Налаштування збору новин
-CHECK_INTERVAL = 3000  # секунди (5 хвилин)
-MAX_POSTS_PER_CHECK = 1
+CHECK_INTERVAL = 300  # секунди (5 хвилин)
+MAX_POSTS_PER_CHECK = 3
 MAX_TEXT_LENGTH = 4000
 
 # Налаштування зображень
