@@ -273,7 +273,7 @@ class NewsCollector:
                 if not published:
                     continue
                 published_dt = datetime.fromtimestamp(time.mktime(published))
-                if datetime.now() - published_dt > timedelta(hours=5):
+                if datetime.now(timezone.utc) - published_dt > timedelta(hours=5):
                     logger.info(f"⏩ Пропускаємо новину: старіша за 5 годин")
                     return []
                 full_text = self.get_full_article_text(entry.get('link', ''))

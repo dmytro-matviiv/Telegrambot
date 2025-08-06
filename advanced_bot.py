@@ -6,7 +6,7 @@
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from advanced_collector import AdvancedNewsCollector
 from telegram_publisher import TelegramPublisher
 from config import CHECK_INTERVAL, MAX_POSTS_PER_CHECK
@@ -53,28 +53,30 @@ class AdvancedNewsBot:
             # Видаляємо дублікати
             unique_news = self.collector.remove_duplicates(news_list)
             logger.info(f"🔄 Після видалення дублікатів: {len(unique_news)} новин")
+            logger.debug(f"🔄 Унікальні новини для публікації: {[n['title'] for n in unique_news]}")
             
             # Фільтруємо важливі новини
             important_news = self.collector.filter_news_by_keywords(
                 unique_news, self.important_keywords
             )
+            logger.info(f"⭐ Знайдено {len(important_news)} важливих новин")
+            logger.debug(f"⭐ Важливі новини: {[n['title'] for n in important_news]}")
             
             if important_news:
-                logger.info(f"⭐ Знайдено {len(important_news)} важливих новин")
-                # Публікуємо важливі новини першими
                 news_to_publish = important_news[:MAX_POSTS_PER_CHECK]
             else:
-                # Якщо важливих новин немає, публікуємо звичайні
                 news_to_publish = unique_news[:MAX_POSTS_PER_CHECK]
+            
+            logger.info(f"📤 Готуємо до публікації {len(news_to_publish)} новин")
+            logger.debug(f"📤 Новини для публікації: {[n['title'] for n in news_to_publish]}")
             
             # Публікуємо новини
             published_count = await self.publisher.publish_multiple_news(news_to_publish)
+            logger.info(f"✅ Опубліковано {published_count} новин")
             
             # Позначаємо як опубліковані
             for news_item in news_to_publish:
                 self.collector.mark_as_published(news_item['id'])
-            
-            logger.info(f"✅ Опубліковано {published_count} новин")
             
             # Виводимо статистику
             stats = self.collector.get_news_statistics()
@@ -169,4 +171,4 @@ if __name__ == "__main__":
     print("=" * 60)
     
     # Запускаємо головну функцію
-    asyncio.run(main()) 
+    asyncio.run(main())

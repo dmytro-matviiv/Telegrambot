@@ -51,7 +51,7 @@ class MemorialMessageScheduler:
         current_time = now.time()
 
         # Перевіряємо, чи час між 9:00 та 9:30 (вікно для відправки)
-        if not (time(9, 0) <= current_time <= time(9, 30)):
+        if not (time(0, 0) <= current_time <= time(23, 59)):
             logger.info(f"[Minute of Silence] Зараз {current_time}, не в вікні 9:00-9:30")
             return False
 
