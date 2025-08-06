@@ -73,6 +73,7 @@ class NewsCollector:
         self.published_news = published_data['published_news']
         self.last_source = published_data['last_source']
         self.last_published_time = published_data['last_published_time']
+        self.last_category_index = published_data.get('last_category_index', 0)  # Індекс останньої категорії
         self.session = requests.Session()
         self.session.trust_env = False  # Вимикаємо використання проксі з env
         self.session.headers.update({
@@ -86,13 +87,15 @@ class NewsCollector:
                 return {
                     'published_news': set(data.get('published_news', [])),
                     'last_source': data.get('last_source', ''),
-                    'last_published_time': data.get('last_published_time', '')
+                    'last_published_time': data.get('last_published_time', ''),
+                    'last_category_index': data.get('last_category_index', 0)
                 }
         except FileNotFoundError:
             return {
                 'published_news': set(),
                 'last_source': '',
-                'last_published_time': ''
+                'last_published_time': '',
+                'last_category_index': 0
             }
 
     def save_published_news(self):
@@ -100,6 +103,7 @@ class NewsCollector:
             'published_news': list(self.published_news),
             'last_source': self.last_source,
             'last_published_time': self.last_published_time,
+            'last_category_index': self.last_category_index,
             'last_updated': datetime.now(timezone.utc).isoformat()
         }
         with open(PUBLISHED_NEWS_FILE, 'w', encoding='utf-8') as f:
@@ -366,56 +370,49 @@ class NewsCollector:
             return ""  # Повертаємо порожній рядок якщо помилка
 
     def collect_all_news(self) -> List[Dict]:
-        """Збирає всі новини з усіх джерел по категоріях"""
+        """Збирає новини з усіх категорій та перемішує їх"""
         all_news = []
         
-        # Визначаємо кількість новин для кожної категорії
-        category_limits = {
-            'world': 3,      # Світові новини
-            'ukraine': 3,    # Українські новини
-            'inventions': 3, # Винаходи
-            'celebrity': 2,  # Зіркове життя
-            'war': 2         # Війна
+        # Визначаємо категорії та їх джерела
+        categories = {
+            'world': ['bbc_world', 'reuters_world', 'cnn_world'],
+            'ukraine': ['channel24', 'unian', 'pravda'],
+            'inventions': ['techcrunch', 'wired_tech', 'the_verge'],
+            'celebrity': ['people', 'eonline'],
+            'war': ['defense_news', 'war_zone']
         }
         
-        # Групуємо джерела за категоріями
-        sources_by_category = {}
-        for source_key, source_info in NEWS_SOURCES.items():
-            category = source_info.get('category', 'unknown')
-            if category not in sources_by_category:
-                sources_by_category[category] = []
-            sources_by_category[category].append((source_key, source_info))
+        logger.info("🔄 Збираємо новини з усіх категорій...")
         
-        # Збираємо новини по категоріях
-        for category, limit in category_limits.items():
-            if category not in sources_by_category:
-                continue
-                
-            category_news = []
-            sources = sources_by_category[category]
-            random.shuffle(sources)  # Перемішуємо джерела
+        # Збираємо новини з усіх категорій
+        for category_name, category_sources in categories.items():
+            logger.info(f"📰 Перевіряємо категорію: {category_name}")
             
-            for source_key, source_info in sources:
+            # Перемішуємо джерела в категорії для різноманітності
+            random.shuffle(category_sources)
+            
+            # Збираємо новини з джерел поточної категорії
+            for source_key in category_sources:
                 try:
+                    source_info = NEWS_SOURCES.get(source_key)
+                    if not source_info:
+                        continue
+                        
                     news = self.get_news_from_rss(source_key, source_info)
                     if news:
-                        category_news.extend(news)
-                        logger.info(f"✅ {source_info['name']}: додано {len(news)} новин до категорії {category}")
-                        
-                        # Зупиняємося коли знайшли достатньо новин для категорії
-                        if len(category_news) >= limit:
-                            break
+                        all_news.extend(news)
+                        logger.info(f"✅ {source_info['name']}: знайдено {len(news)} новин")
                     else:
                         logger.info(f"⏩ {source_info['name']}: немає новин")
                         
                 except Exception as e:
-                    logger.error(f"Помилка при зборі з {source_info['name']}: {e}")
+                    logger.error(f"Помилка при зборі з {source_key}: {e}")
                     continue
-            
-            # Обмежуємо кількість новин для категорії
-            category_news = category_news[:limit]
-            all_news.extend(category_news)
-            logger.info(f"📊 Категорія '{category}': знайдено {len(category_news)} новин")
+        
+        # Перемішуємо всі знайдені новини
+        if all_news:
+            random.shuffle(all_news)
+            logger.info(f"🎲 Перемішано {len(all_news)} новин у випадковому порядку")
         
         # Фільтруємо вже опубліковані новини
         new_news = []
@@ -425,7 +422,17 @@ class NewsCollector:
                 new_news.append(news)
         
         if new_news:
-            logger.info(f"📰 Знайдено {len(new_news)} нових новин")
+            logger.info(f"📰 Знайдено {len(new_news)} нових новин з різних джерел")
+            
+            # Показуємо статистику по джерелах
+            sources_count = {}
+            for news in new_news:
+                source = news['source']
+                sources_count[source] = sources_count.get(source, 0) + 1
+            
+            logger.info("📊 Статистика по джерелах:")
+            for source, count in sources_count.items():
+                logger.info(f"   {source}: {count} новин")
         else:
             logger.info("📭 Нові новини не знайдено")
             

@@ -31,29 +31,38 @@ class NewsBot:
         self.is_running = False
 
     async def check_and_publish_news(self):
-        """Перевіряє новини та публікує їх"""
+        """Перевіряє та публікує новини"""
         try:
             logger.info("🔍 Перевіряємо нові новини...")
             
-            # Збираємо всі новини
+            # Збираємо новини
             all_news = self.collector.collect_all_news()
             
-            if not all_news:
-                logger.info("📭 Нові новини не знайдено")
-                return
-            
-            logger.info(f"📰 Знайдено {len(all_news)} нових новин")
-            
-            # Публікуємо новини
-            published_count = await self.publisher.publish_multiple_news(all_news)
-            
-            if published_count > 0:
-                logger.info(f"✅ Опубліковано {published_count} новин")
+            if all_news:
+                logger.info(f"📰 Знайдено {len(all_news)} нових новин")
+                
+                # Публікуємо перші кілька новин (максимум 3)
+                news_to_publish = all_news[:3]
+                logger.info(f"📤 Публікуємо {len(news_to_publish)} новин...")
+                
+                success = await self.publisher.publish_multiple_news(news_to_publish)
+                
+                if success:
+                    # Позначаємо новини як опубліковані
+                    for news in news_to_publish:
+                        news_id = f"{news['source_key']}_{news['id']}"
+                        self.collector.mark_as_published(news_id, news['source_key'])
+                    
+                    logger.info("✅ Новини успішно опубліковані")
+                else:
+                    logger.error("❌ Помилка при публікації новин")
             else:
-                logger.info("❌ Не вдалося опублікувати жодної новини")
+                logger.info("📭 Нові новини не знайдено")
                 
         except Exception as e:
             logger.error(f"❌ Помилка при перевірці новин: {e}")
+            import traceback
+            logger.error(f"Деталі помилки: {traceback.format_exc()}")
 
     async def run(self):
         """Запускає бота"""

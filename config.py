@@ -112,9 +112,10 @@ NEWS_SOURCES = {
 }
 
 # Налаштування збору новин
-CHECK_INTERVAL = 2500  # секунди (5 хвилин)
+CHECK_INTERVAL = 2500  # секунди (41 хвилина 40 секунд)
+# Кількість новин для публікації за один раз
 MAX_POSTS_PER_CHECK = 3
-MAX_TEXT_LENGTH = 3000
+MAX_TEXT_LENGTH = 4000
 
 # Налаштування зображень
 DEFAULT_IMAGE_URL = 'file://default_ua_news.jpg'
