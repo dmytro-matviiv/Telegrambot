@@ -9,93 +9,105 @@ CHANNEL_ID = os.getenv('CHANNEL_ID')
 
 # Джерела новин (RSS та веб-сайти)
 NEWS_SOURCES = {
-    # Офіційні українські джерела з відео
-    'tsn': {
-        'name': 'ТСН',
-        'rss': 'https://tsn.ua/rss',
-        'website': 'https://tsn.ua/'
+    # Світові новини (3 джерела)
+    'bbc_world': {
+        'name': 'BBC World',
+        'rss': 'https://feeds.bbci.co.uk/news/world/rss.xml',
+        'website': 'https://www.bbc.com/news/world',
+        'category': 'world',
+        'language': 'en'
     },
-    'pravda_war': {
-        'name': 'Українська правда (Війна)',
-        'rss': 'https://www.pravda.com.ua/rss/',
-        'website': 'https://www.pravda.com.ua/rus/news/'
+    'reuters_world': {
+        'name': 'Reuters World',
+        'rss': 'https://feeds.reuters.com/Reuters/worldNews',
+        'website': 'https://www.reuters.com/world',
+        'category': 'world',
+        'language': 'en'
     },
-    'ukrinform': {
-        'name': 'Укрінформ',
-        'rss': 'https://www.ukrinform.ua/rss',
-        'website': 'https://www.ukrinform.ua/'
+    'cnn_world': {
+        'name': 'CNN World',
+        'rss': 'http://rss.cnn.com/rss/edition_world.rss',
+        'website': 'https://www.cnn.com/world',
+        'category': 'world',
+        'language': 'en'
     },
-    'espreso': {
-        'name': 'Еспресо',
-        'rss': 'https://espreso.tv/rss',
-        'website': 'https://espreso.tv/'
+    
+    # Українські новини (3 джерела)
+    'channel24': {
+        'name': '24 Канал',
+        'rss': 'https://24tv.ua/rss/all.xml',
+        'website': 'https://24tv.ua',
+        'category': 'ukraine',
+        'language': 'uk'
     },
     'unian': {
         'name': 'УНІАН',
         'rss': 'https://www.unian.ua/rss',
-        'website': 'https://www.unian.ua'
+        'website': 'https://www.unian.ua',
+        'category': 'ukraine',
+        'language': 'uk'
     },
     'pravda': {
         'name': 'Українська правда',
         'rss': 'https://www.pravda.com.ua/rss/',
-        'website': 'https://www.pravda.com.ua'
-    },
-    'radiosvoboda': {
-        'name': 'Радіо Свобода',
-        'rss': 'https://www.radiosvoboda.org/api/zrqiteuuir',
-        'website': 'https://www.radiosvoboda.org'
-    },
-    'interfax': {
-        'name': 'Інтерфакс-Україна',
-        'rss': 'https://ua.interfax.com.ua/news/general.rss',
-        'website': 'https://ua.interfax.com.ua'
-    },
-    'channel24': {
-        'name': '24 Канал',
-        'rss': 'https://24tv.ua/rss/all.xml',
-        'website': 'https://24tv.ua'
+        'website': 'https://www.pravda.com.ua',
+        'category': 'ukraine',
+        'language': 'uk'
     },
     
-    # Надійні джерела з кращою підтримкою відео
-    'nv': {
-        'name': 'НВ',
-        'rss': 'https://nv.ua/rss.xml',
-        'website': 'https://nv.ua'
+    # Винаходи та технології (3 джерела)
+    'techcrunch': {
+        'name': 'TechCrunch',
+        'rss': 'https://techcrunch.com/feed/',
+        'website': 'https://techcrunch.com',
+        'category': 'inventions',
+        'language': 'en'
     },
-    'zn': {
-        'name': 'Зеркало недели',
-        'rss': 'https://zn.ua/rss',
-        'website': 'https://zn.ua'
+    'wired_tech': {
+        'name': 'Wired Technology',
+        'rss': 'https://www.wired.com/feed/rss',
+        'website': 'https://www.wired.com',
+        'category': 'inventions',
+        'language': 'en'
     },
-    'fakty': {
-        'name': 'Факти ICTV',
-        'rss': 'https://fakty.com.ua/rss',
-        'website': 'https://fakty.com.ua'
+    'the_verge': {
+        'name': 'The Verge',
+        'rss': 'https://www.theverge.com/rss/index.xml',
+        'website': 'https://www.theverge.com',
+        'category': 'inventions',
+        'language': 'en'
     },
-    'obozrevatel': {
-        'name': 'Обозреватель',
-        'rss': 'https://obozrevatel.com/rss',
-        'website': 'https://obozrevatel.com'
+    
+    # Зіркове життя (2 джерела)
+    'people': {
+        'name': 'People',
+        'rss': 'https://people.com/feed/',
+        'website': 'https://people.com',
+        'category': 'celebrity',
+        'language': 'en'
     },
-    'korrespondent': {
-        'name': 'Корреспондент',
-        'rss': 'https://korrespondent.net/rss',
-        'website': 'https://korrespondent.net'
+    'eonline': {
+        'name': 'E! Online',
+        'rss': 'https://www.eonline.com/feed',
+        'website': 'https://www.eonline.com',
+        'category': 'celebrity',
+        'language': 'en'
     },
-    'ukraine': {
-        'name': 'Україна.ру',
-        'rss': 'https://ukraina.ru/rss',
-        'website': 'https://ukraina.ru'
+    
+    # Війна з Україною (2 джерела)
+    'defense_news': {
+        'name': 'Defense News',
+        'rss': 'https://www.defensenews.com/rss/',
+        'website': 'https://www.defensenews.com',
+        'category': 'war',
+        'language': 'en'
     },
-    'gordon': {
-        'name': 'ГОРДОН',
-        'rss': 'https://gordonua.com/rss',
-        'website': 'https://gordonua.com'
-    },
-    'rbc': {
-        'name': 'РБК-Україна',
-        'rss': 'https://www.rbc.ua/rss',
-        'website': 'https://www.rbc.ua'
+    'war_zone': {
+        'name': 'The War Zone',
+        'rss': 'https://www.thedrive.com/the-war-zone/rss',
+        'website': 'https://www.thedrive.com/the-war-zone',
+        'category': 'war',
+        'language': 'en'
     }
 }
 
@@ -105,7 +117,7 @@ MAX_POSTS_PER_CHECK = 3
 MAX_TEXT_LENGTH = 4000
 
 # Налаштування зображень
-DEFAULT_IMAGE_URL = 'default_ua_news.jpg'
+DEFAULT_IMAGE_URL = 'file://default_ua_news.jpg'
 IMAGE_DOWNLOAD_TIMEOUT = 30
 
 # Файл для зберігання опублікованих новин
