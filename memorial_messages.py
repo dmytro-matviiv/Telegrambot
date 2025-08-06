@@ -4,6 +4,7 @@ import random
 from datetime import datetime, time, timedelta
 from typing import List
 from telegram_publisher import TelegramPublisher
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -44,18 +45,21 @@ class MemorialMessageScheduler:
     
     def should_send_memorial_message(self) -> bool:
         """Перевіряє, чи потрібно надіслати меморіальне повідомлення"""
-        now = datetime.now()
+        # Використовуємо часовий пояс Києва
+        now = datetime.now(pytz.timezone("Europe/Kiev"))
         current_date = now.date()
         current_time = now.time()
-        
+
         # Перевіряємо, чи час між 9:00 та 9:30 (вікно для відправки)
         if not (time(9, 0) <= current_time <= time(9, 30)):
+            logger.info(f"[Minute of Silence] Зараз {current_time}, не в вікні 9:00-9:30")
             return False
-        
+
         # Перевіряємо, чи вже надсилали сьогодні
         if self.last_sent_date == current_date:
+            logger.info("[Minute of Silence] Сьогодні вже надсилали меморіальне повідомлення")
             return False
-        
+
         return True
     
     async def send_memorial_message(self) -> bool:
@@ -81,10 +85,12 @@ class MemorialMessageScheduler:
         if self.should_send_memorial_message():
             logger.info("🕯️ Час для меморіального повідомлення (9:00 ранку)")
             await self.send_memorial_message()
+        else:
+            logger.info("[Minute of Silence] Не час для меморіального повідомлення")
         
-    async def monitor_memorial_schedule(self, check_interval: int = 300):
+    async def monitor_memorial_schedule(self, check_interval: int = 60):
         """Моніторить розклад і надсилає меморіальні повідомлення"""
-        logger.info("🕯️ Запущено моніторинг меморіальних повідомлень (перевірка кожні 5 хвилин)")
+        logger.info("🕯️ Запущено моніторинг меморіальних повідомлень (перевірка кожну хвилину)")
         
         while True:
             try:

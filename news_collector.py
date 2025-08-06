@@ -318,12 +318,21 @@ class NewsCollector:
                         summary = translated_summary
                 
                 # --- Кінець перекладу ---
-                
+
+                # Обрізаємо description і full_text до 400 символів
+                max_len = 400
+                def trim(text):
+                    if not text:
+                        return ""
+                    if len(text) > max_len:
+                        return text[:max_len].rstrip() + "…"
+                    return text
+
                 news_item = {
                     'id': news_id,
                     'title': title,
-                    'description': summary,
-                    'full_text': full_text,
+                    'description': trim(summary),
+                    'full_text': trim(full_text),
                     'link': entry.get('link', ''),
                     'image_url': image_url,
                     'video_url': video_url,
