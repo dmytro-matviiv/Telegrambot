@@ -65,11 +65,7 @@ NEWS_SOURCES = {
         'rss': 'https://novynarnia.com/feed/',
         'website': 'https://novynarnia.com'
     },
-    'espreso': {
-        'name': 'Еспресо',
-        'rss': 'https://espreso.tv/rss',
-        'website': 'https://espreso.tv'
-    },
+
     'channel24': {
         'name': '24 Канал',
         'rss': 'https://24tv.ua/rss/all.xml',

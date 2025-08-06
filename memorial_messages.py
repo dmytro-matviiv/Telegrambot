@@ -117,23 +117,3 @@ async def schedule_minute_of_silence(bot, channel_id):
 
 async def send_minute_of_silence(bot, channel_id):
     pass  # Реалізуйте відправлення повідомлення тут
-
-async def send_memorial_message_daily(publisher):
-    memorial_text = (
-        "🕯️ Хвилина мовчання за нашими героями, які віддали життя за незалежність України.\n\n"
-        "💔 Вічна пам'ять захисникам, які боронили нашу землю від ворога.\n\n"
-        "🙏 Їхня жертва не буде забута. Слава Героям! 🇺🇦"
-    )
-    kyiv_tz = pytz.timezone('Europe/Kyiv')
-    while True:
-        now = datetime.now(kyiv_tz)
-        target = now.replace(hour=9, minute=0, second=0, microsecond=0)
-        if now >= target:
-            target += timedelta(days=1)
-        wait_seconds = (target - now).total_seconds()
-        await asyncio.sleep(wait_seconds)
-        try:
-            await publisher.send_simple_message(memorial_text)
-        except Exception as e:
-            print(f"[Minute of Silence] Failed to send: {e}")
-        await asyncio.sleep(60)  # щоб уникнути повторного надсилання протягом хвилини
