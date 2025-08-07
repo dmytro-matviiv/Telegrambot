@@ -72,9 +72,12 @@ class MemorialMessageScheduler:
         current_date = now.date()
         current_time = now.time()
 
+        logger.info(f"[Minute of Silence] Поточний час: {current_time}, дата: {current_date}")
+        logger.info(f"[Minute of Silence] Остання дата відправки: {self.last_sent_date}")
+
         # Перевіряємо, чи час між 9:00 та 9:30 (вікно для відправки)
         if not (time(9, 0) <= current_time <= time(9, 30)):
-            logger.debug(f"[Minute of Silence] Зараз {current_time}, не в вікні 9:00-9:30")
+            logger.info(f"[Minute of Silence] Зараз {current_time}, не в вікні 9:00-9:30")
             return False
 
         # Перевіряємо, чи вже надсилали сьогодні
@@ -82,6 +85,7 @@ class MemorialMessageScheduler:
             logger.info("[Minute of Silence] Сьогодні вже надсилали меморіальне повідомлення")
             return False
 
+        logger.info("[Minute of Silence] Умови для відправки виконані!")
         return True
     
     async def send_memorial_message(self) -> bool:
@@ -106,6 +110,7 @@ class MemorialMessageScheduler:
     
     async def check_and_send_memorial(self):
         """Перевіряє час і надсилає меморіальне повідомлення якщо потрібно"""
+        logger.info("[Minute of Silence] Перевіряю умови для меморіального повідомлення...")
         if self.should_send_memorial_message():
             logger.info("🕯️ Час для меморіального повідомлення (9:00 ранку)")
             await self.send_memorial_message()

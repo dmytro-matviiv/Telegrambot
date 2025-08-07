@@ -32,14 +32,15 @@ NEWS_SOURCES = {
         'language': 'en'
     },
     
-    # Українські новини (3 джерела)
-    'channel24': {
-        'name': '24 Канал',
-        'rss': 'https://24tv.ua/rss/all.xml',
-        'website': 'https://24tv.ua',
+    # Українські новини (4 джерела)
+    'tsn': {
+        'name': 'ТСН',
+        'rss': 'https://tsn.ua/rss',
+        'website': 'https://tsn.ua',
         'category': 'ukraine',
         'language': 'uk'
     },
+    
     'unian': {
         'name': 'УНІАН',
         'rss': 'https://www.unian.ua/rss',

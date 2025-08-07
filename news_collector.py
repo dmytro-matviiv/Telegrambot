@@ -351,15 +351,47 @@ class NewsCollector:
             # Перевіряємо повний текст статті
             if article_url:
                 try:
-                    full_text = self.get_full_article_text(article_url)
-                    if full_text:
-                        soup = BeautifulSoup(full_text, 'html.parser')
+                    # Отримуємо повну сторінку статті
+                    response = self.session.get(article_url, timeout=15)
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.content, 'html.parser')
                         
-                        # Шукаємо зображення в повному тексті
-                        img = soup.find('img')
-                        if img and img.get('src'):
-                            logger.info(f"📸 Знайдено зображення в повному тексті: {img['src'][:50]}...")
-                            return img['src']
+                        # Видаляємо непотрібні елементи
+                        for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+                            element.decompose()
+                        
+                        # Шукаємо зображення різними способами
+                        images = []
+                        
+                        # 1. Шукаємо всі img теги
+                        img_tags = soup.find_all('img')
+                        for img in img_tags:
+                            src = img.get('src', '')
+                            if src and src.startswith('http') and 'tsn.ua' in src:
+                                # Пріоритет для зображень ТСН
+                                if 'thumbs' in src and ('1200x630' in src or '800x600' in src):
+                                    logger.info(f"📸 Знайдено основне зображення ТСН: {src[:50]}...")
+                                    return src
+                                images.append(src)
+                        
+                        # 2. Шукаємо в основному контенті
+                        main_content = soup.find('article') or soup.find('main') or soup.find('.content')
+                        if main_content:
+                            main_images = main_content.find_all('img')
+                            for img in main_images:
+                                src = img.get('src', '')
+                                if src and src.startswith('http') and 'tsn.ua' in src:
+                                    if 'thumbs' in src and ('1200x630' in src or '800x600' in src):
+                                        logger.info(f"📸 Знайдено зображення в контенті: {src[:50]}...")
+                                        return src
+                                    images.append(src)
+                        
+                        # 3. Повертаємо перше знайдене зображення ТСН
+                        for img_url in images:
+                            if 'tsn.ua' in img_url and not img_url.endswith('.svg'):
+                                logger.info(f"📸 Використовуємо зображення ТСН: {img_url[:50]}...")
+                                return img_url
+                                
                 except Exception as e:
                     logger.warning(f"Помилка при отриманні повного тексту: {e}")
 
@@ -376,7 +408,7 @@ class NewsCollector:
         # Визначаємо категорії та їх джерела
         categories = {
             'world': ['bbc_world', 'reuters_world', 'cnn_world'],
-            'ukraine': ['channel24', 'unian', 'pravda'],
+            'ukraine': ['tsn', 'unian', 'pravda'],
             'inventions': ['techcrunch', 'wired_tech', 'the_verge'],
             'celebrity': ['people', 'eonline'],
             'war': ['defense_news', 'war_zone']

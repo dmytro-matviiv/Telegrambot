@@ -77,6 +77,7 @@ class NewsBot:
         
         while True:
             try:
+                # Перевіряємо та публікуємо новини
                 await self.check_and_publish_news()
                 logger.info(f"⏰ Очікую {CHECK_INTERVAL} секунд до наступної перевірки...")
                 await asyncio.sleep(CHECK_INTERVAL)
