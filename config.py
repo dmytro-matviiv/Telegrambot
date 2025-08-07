@@ -79,18 +79,11 @@ NEWS_SOURCES = {
         'language': 'en'
     },
     
-    # Зіркове життя (2 джерела)
+    # Зіркове життя (1 джерело)
     'people': {
         'name': 'People',
         'rss': 'https://people.com/feed/',
         'website': 'https://people.com',
-        'category': 'celebrity',
-        'language': 'en'
-    },
-    'eonline': {
-        'name': 'E! Online',
-        'rss': 'https://www.eonline.com/feed',
-        'website': 'https://www.eonline.com',
         'category': 'celebrity',
         'language': 'en'
     },

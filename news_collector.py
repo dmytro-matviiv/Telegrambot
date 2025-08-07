@@ -410,7 +410,7 @@ class NewsCollector:
             'world': ['bbc_world', 'reuters_world', 'cnn_world'],
             'ukraine': ['tsn', 'unian', 'pravda'],
             'inventions': ['techcrunch', 'wired_tech', 'the_verge'],
-            'celebrity': ['people', 'eonline'],
+            'celebrity': ['people'],
             'war': ['defense_news', 'war_zone']
         }
         
