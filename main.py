@@ -75,6 +75,11 @@ class NewsBot:
         
         logger.info("✅ Бот успішно запущено")
         
+        # Запускаємо монітор повітряних тривог як окрему задачу
+        alerts_task = asyncio.create_task(
+            self.alerts_monitor.monitor(interval=60)
+        )
+        
         while True:
             try:
                 # Перевіряємо та публікуємо новини
@@ -87,6 +92,9 @@ class NewsBot:
             except Exception as e:
                 logger.error(f"❌ Помилка: {e}")
                 await asyncio.sleep(60)  # Чекаємо хвилину перед повторною спробою
+        
+        # Скасовуємо задачу монітора тривог
+        alerts_task.cancel()
         
         # Закриваємо з'єднання
         await self.publisher.close()
