@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, timezone
 from news_collector import NewsCollector, parse_published_date
 from telegram_publisher import TelegramPublisher
 from air_alerts_monitor import AirAlertsMonitor
-from memorial_messages import MemorialMessageScheduler, schedule_minute_of_silence
+from memorial_messages import MemorialMessageScheduler
+
 from config import CHECK_INTERVAL, MAX_POSTS_PER_CHECK, CHANNEL_ID
 import os
 
@@ -80,6 +81,11 @@ class NewsBot:
             self.alerts_monitor.monitor(interval=60)
         )
         
+        # Запускаємо меморіальний планувальник як окрему задачу
+        memorial_task = asyncio.create_task(
+            self.memorial_scheduler.monitor_memorial_schedule(check_interval=60)
+        )
+        
         while True:
             try:
                 # Перевіряємо та публікуємо новини
@@ -93,8 +99,9 @@ class NewsBot:
                 logger.error(f"❌ Помилка: {e}")
                 await asyncio.sleep(60)  # Чекаємо хвилину перед повторною спробою
         
-        # Скасовуємо задачу монітора тривог
+        # Скасовуємо задачі
         alerts_task.cancel()
+        memorial_task.cancel()
         
         # Закриваємо з'єднання
         await self.publisher.close()
