@@ -131,10 +131,11 @@ class AirAlertsMonitor:
     async def send_alert(self, text):
         await self.publisher.send_simple_message(text)
 
-    async def monitor(self, interval=60):
+    async def monitor(self, interval=30):
         logging.info(f"🚨 Моніторинг тривог запущений з інтервалом {interval} сек")
         while True:
             try:
+                logging.info("🔍 Перевіряємо тривоги...")
                 alerts_data = await self.fetch_alerts()
                 # Перевіряємо формат даних - API повертає {'alerts': [...]} або список
                 if isinstance(alerts_data, dict) and 'alerts' in alerts_data:
@@ -214,8 +215,8 @@ class AirAlertsMonitor:
                                 started_dt = datetime.datetime.strptime(started_at[:19], "%Y-%m-%dT%H:%M:%S")
                                 delta = (now - started_dt).total_seconds() / 60
                                 
-                                # Надсилаємо тільки тривоги, які почалися не більше 2 хвилин тому
-                                if delta > 2:
+                                # Надсилаємо тільки тривоги, які почалися не більше 10 хвилин тому
+                                if delta > 10:
                                     logging.info(f"⏩ Пропускаємо стару тривогу: {alert.get('location_title', '')} (почалася {delta:.1f} хв тому)")
                                     continue
                             except Exception as e:
