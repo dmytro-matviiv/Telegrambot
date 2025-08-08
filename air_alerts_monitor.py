@@ -2,7 +2,7 @@ import asyncio
 import aiohttp
 import logging
 import os
-from config import ALERTS_API_TOKEN, CHANNEL_ID
+from config import ALERTS_API_TOKEN, CHANNEL_ID, MASS_END_THRESHOLD, MASS_END_TIME_WINDOW, MASS_ALERT_THRESHOLD, MASS_ALERT_TIME_WINDOW
 from telegram_publisher import TelegramPublisher
 import datetime
 
@@ -39,6 +39,8 @@ class AirAlertsMonitor:
         self.publisher = publisher
         self.prev_alerts = set()  # {(location_title, alert_type)}
         self.is_first_run = True  # Прапорець для першого запуску
+        self.ended_alerts_buffer = []  # Буфер для зберігання відбоїв для групування
+        self.last_mass_end_time = None  # Час останнього масового відбою
 
     async def fetch_alerts(self):
         headers = {}
@@ -103,7 +105,7 @@ class AirAlertsMonitor:
 
     def should_group_alerts(self, new_alerts, current_alerts_dict):
         """Перевіряє чи потрібно групувати тривоги"""
-        if len(new_alerts) >= 3:
+        if len(new_alerts) >= MASS_ALERT_THRESHOLD:
             # Перевіряємо чи тривоги почалися в проміжку 1-2 хвилини
             now = datetime.datetime.now(datetime.timezone.utc)
             alert_times = []
@@ -117,13 +119,43 @@ class AirAlertsMonitor:
                     except:
                         continue
             
-            if len(alert_times) >= 3:
-                # Перевіряємо чи всі тривоги в межах 2 хвилин
+            if len(alert_times) >= MASS_ALERT_THRESHOLD:
+                # Перевіряємо чи всі тривоги в межах налаштованого часового вікна
                 min_time = min(alert_times)
                 max_time = max(alert_times)
                 time_diff = (max_time - min_time).total_seconds() / 60
                 
-                if time_diff <= 2:
+                if time_diff <= MASS_ALERT_TIME_WINDOW:
+                    return True
+        
+        return False
+
+    def should_group_end_alerts(self, ended_alerts, all_alerts_dict):
+        """Перевіряє чи потрібно групувати відбої тривоги"""
+        if len(ended_alerts) >= MASS_END_THRESHOLD:  # Більше половини областей мають відбій
+            now = datetime.datetime.now(datetime.timezone.utc)
+            end_times = []
+            
+            for key in ended_alerts:
+                location, alert_type = key
+                if alert_type != 'air_raid':
+                    continue
+                    
+                alert = all_alerts_dict.get(key)
+                if alert and alert.get('finished_at'):
+                    try:
+                        finished_dt = datetime.datetime.strptime(alert['finished_at'][:19], "%Y-%m-%dT%H:%M:%S")
+                        end_times.append(finished_dt)
+                    except:
+                        continue
+            
+            if len(end_times) >= MASS_END_THRESHOLD:
+                # Перевіряємо чи всі відбої в межах налаштованого часового вікна
+                min_time = min(end_times)
+                max_time = max(end_times)
+                time_diff = (max_time - min_time).total_seconds() / 60
+                
+                if time_diff <= MASS_END_TIME_WINDOW:
                     return True
         
         return False
@@ -228,37 +260,44 @@ class AirAlertsMonitor:
                         await self.send_alert(text)
 
                 # --- Надсилання завершених подій ---
-                for key in ended_alerts:
-                    location, alert_type = key
-                    if alert_type != 'air_raid':
-                        continue
-                    
-                    # Перевіряємо, чи є завершена тривога в поточних даних API
-                    finished_alert = all_alerts_dict.get(key)
-                    if finished_alert and finished_alert.get('finished_at'):
-                        # Є завершена тривога в API - перевіряємо час завершення
-                        finished_at = finished_alert.get('finished_at')
-                        try:
-                            finished_dt = datetime.datetime.strptime(finished_at[:19], "%Y-%m-%dT%H:%M:%S")
-                            delta = (now - finished_dt).total_seconds() / 60
-                            
-                            # Надсилаємо тільки відбої, які відбулися не більше 5 хвилин тому
-                            if delta > 5:
-                                logging.info(f"⏩ Пропускаємо старий відбій: {location} (відбувся {delta:.1f} хв тому)")
-                                continue
-                        except Exception as e:
-                            logging.warning(f"Помилка парсингу часу відбою: {e}")
-                            # Якщо не можемо парсити час - все одно надсилаємо відбій
-                    else:
-                        # Немає завершеної тривоги в API - тривога просто зникла з активних
-                        # Це означає що вона завершилася, надсилаємо відбій
-                        logging.info(f"🔍 Тривога зникла з активних (API не повертає finished_at): {location}")
-                    
-                    # Надсилаємо повідомлення про відбій
-                    fake_alert = {'location_title': location}
-                    text = format_alert_message(fake_alert, is_end=True)
-                    logging.info(f"📤 Надсилаємо відбій тривоги: {location}")
-                    await self.send_alert(text)
+                # Перевіряємо чи потрібно групувати відбої
+                if self.should_group_end_alerts(ended_alerts, all_alerts_dict):
+                    logging.info(f"📤 Надсилаємо загальний відбій тривоги для України (масовий відбій: {len(ended_alerts)} областей)")
+                    await self.send_alert("✅ <b>Відбій повітряної тривоги</b> — Україна")
+                    self.last_mass_end_time = now
+                else:
+                    # Надсилаємо окремі відбої
+                    for key in ended_alerts:
+                        location, alert_type = key
+                        if alert_type != 'air_raid':
+                            continue
+                        
+                        # Перевіряємо, чи є завершена тривога в поточних даних API
+                        finished_alert = all_alerts_dict.get(key)
+                        if finished_alert and finished_alert.get('finished_at'):
+                            # Є завершена тривога в API - перевіряємо час завершення
+                            finished_at = finished_alert.get('finished_at')
+                            try:
+                                finished_dt = datetime.datetime.strptime(finished_at[:19], "%Y-%m-%dT%H:%M:%S")
+                                delta = (now - finished_dt).total_seconds() / 60
+                                
+                                # Надсилаємо тільки відбої, які відбулися не більше 5 хвилин тому
+                                if delta > 5:
+                                    logging.info(f"⏩ Пропускаємо старий відбій: {location} (відбувся {delta:.1f} хв тому)")
+                                    continue
+                            except Exception as e:
+                                logging.warning(f"Помилка парсингу часу відбою: {e}")
+                                # Якщо не можемо парсити час - все одно надсилаємо відбій
+                        else:
+                            # Немає завершеної тривоги в API - тривога просто зникла з активних
+                            # Це означає що вона завершилася, надсилаємо відбій
+                            logging.info(f"🔍 Тривога зникла з активних (API не повертає finished_at): {location}")
+                        
+                        # Надсилаємо повідомлення про відбій
+                        fake_alert = {'location_title': location}
+                        text = format_alert_message(fake_alert, is_end=True)
+                        logging.info(f"📤 Надсилаємо відбій тривоги: {location}")
+                        await self.send_alert(text)
 
                 self.prev_alerts = current_alerts
 

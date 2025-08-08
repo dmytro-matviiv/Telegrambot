@@ -106,7 +106,7 @@ NEWS_SOURCES = {
 }
 
 # Налаштування збору новин
-CHECK_INTERVAL = 2500  # секунди (41 хвилина 40 секунд)
+CHECK_INTERVAL = 3000  # секунди (50 хвилин)
 # Кількість новин для публікації за один раз
 MAX_POSTS_PER_CHECK = 3
 MAX_TEXT_LENGTH = 4000
@@ -120,3 +120,11 @@ PUBLISHED_NEWS_FILE = 'published_news.json'
 
 # Токен для API повітряних тривог (alerts.in.ua)
 ALERTS_API_TOKEN = "ed1f73bbaaecda208a960c2a84e20de7ae241d6fab2203"
+
+# Налаштування групування відбоїв тривоги
+MASS_END_THRESHOLD = 4  # Мінімальна кількість областей для масового відбою
+MASS_END_TIME_WINDOW = 1  # Часовий вікно в хвилинах для групування відбоїв
+
+# Налаштування групування тривог
+MASS_ALERT_THRESHOLD = 3  # Мінімальна кількість областей для масової тривоги
+MASS_ALERT_TIME_WINDOW = 2  # Часовий вікно в хвилинах для групування тривог
