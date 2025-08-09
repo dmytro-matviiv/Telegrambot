@@ -122,7 +122,7 @@ PUBLISHED_NEWS_FILE = 'published_news.json'
 ALERTS_API_TOKEN = "ed1f73bbaaecda208a960c2a84e20de7ae241d6fab2203"
 
 # Налаштування групування відбоїв тривоги
-MASS_END_THRESHOLD = 4  # Мінімальна кількість областей для масового відбою
+MASS_END_THRESHOLD = 3  # Мінімальна кількість областей для масового відбою
 MASS_END_TIME_WINDOW = 1  # Часовий вікно в хвилинах для групування відбоїв
 
 # Налаштування групування тривог
