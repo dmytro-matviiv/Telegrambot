@@ -209,7 +209,7 @@ class TelegramPublisher:
                     logger.info(f"Опубліковано новину без зображення: {news_item.get('title', '')[:50]}...")
                 
                 published_count += 1
-                break  # Публікуємо лише одну успішну новину за раз
+                # Публікуємо всі новини з різних джерел
             except Exception as e:
                 logger.error(f"Помилка Telegram при публікації: {e}")
                 continue  # Якщо помилка — пробуємо наступну новину

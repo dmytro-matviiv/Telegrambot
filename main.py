@@ -30,6 +30,66 @@ class NewsBot:
         self.alerts_monitor = AirAlertsMonitor(self.publisher)
         self.memorial_scheduler = MemorialMessageScheduler(self.publisher)
         self.is_running = False
+        self.last_published_sources = []  # Трекимо останні опубліковані джерела
+
+    def select_diverse_news(self, all_news: list, max_count: int = 3) -> list:
+        """Вибір новин з різних джерел для різноманітності"""
+        if not all_news:
+            return []
+        
+        # Групуємо новини за джерелами
+        news_by_source = {}
+        for news in all_news:
+            source = news['source_key']
+            if source not in news_by_source:
+                news_by_source[source] = []
+            news_by_source[source].append(news)
+        
+        # Сортуємо джерела за пріоритетом (менше опублікованих = вищий пріоритет)
+        source_priority = []
+        for source, news_list in news_by_source.items():
+            # Рахуємо скільки разів це джерело було опубліковано останнім
+            recent_count = self.last_published_sources.count(source)
+            source_priority.append((source, news_list, recent_count))
+        
+        # Сортуємо за пріоритетом (менше недавніх публікацій = вищий пріоритет)
+        source_priority.sort(key=lambda x: x[2])
+        
+        # Вибір новин з різних джерел
+        selected_news = []
+        used_sources = set()
+        
+        for source, news_list, _ in source_priority:
+            if len(selected_news) >= max_count:
+                break
+            
+            # Беремо першу новину з цього джерела
+            if news_list and source not in used_sources:
+                selected_news.append(news_list[0])
+                used_sources.add(source)
+        
+        # Якщо не набрали достатньо новин, додаємо з інших джерел
+        if len(selected_news) < max_count:
+            for source, news_list, _ in source_priority:
+                if len(selected_news) >= max_count:
+                    break
+                
+                # Додаємо додаткові новини з цього джерела
+                for news in news_list[1:]:  # Починаємо з другої новини
+                    if len(selected_news) >= max_count:
+                        break
+                    selected_news.append(news)
+        
+        # Оновлюємо список останніх опублікованих джерел
+        for news in selected_news:
+            self.last_published_sources.append(news['source_key'])
+        
+        # Зберігаємо тільки останні 10 джерел для пам'яті
+        if len(self.last_published_sources) > 10:
+            self.last_published_sources = self.last_published_sources[-10:]
+        
+        logger.info(f"🎯 Вибрані новини з джерел: {list(used_sources)}")
+        return selected_news
 
     async def check_and_publish_news(self):
         """Перевіряє та публікує новини"""
@@ -42,9 +102,9 @@ class NewsBot:
             if all_news:
                 logger.info(f"📰 Знайдено {len(all_news)} нових новин")
                 
-                # Публікуємо перші кілька новин (максимум 3)
-                news_to_publish = all_news[:3]
-                logger.info(f"📤 Публікуємо {len(news_to_publish)} новин...")
+                # Вибір новин з різних джерел для різноманітності
+                news_to_publish = self.select_diverse_news(all_news, max_count=3)
+                logger.info(f"📤 Публікуємо {len(news_to_publish)} новин з різних джерел...")
                 
                 success = await self.publisher.publish_multiple_news(news_to_publish)
                 
