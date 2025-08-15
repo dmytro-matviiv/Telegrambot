@@ -103,8 +103,8 @@ class NewsBot:
                 logger.info(f"📰 Знайдено {len(all_news)} нових новин")
                 
                 # Вибір новин з різних джерел для різноманітності
-                news_to_publish = self.select_diverse_news(all_news, max_count=3)
-                logger.info(f"📤 Публікуємо {len(news_to_publish)} новин з різних джерел...")
+                news_to_publish = self.select_diverse_news(all_news, max_count=MAX_POSTS_PER_CHECK)
+                logger.info(f"📤 Публікуємо {len(news_to_publish)} новину з різних джерел...")
                 
                 success = await self.publisher.publish_multiple_news(news_to_publish)
                 
