@@ -163,7 +163,7 @@ class AirAlertsMonitor:
     async def send_alert(self, text):
         await self.publisher.send_simple_message(text)
 
-    async def monitor(self, interval=30):
+    async def monitor(self, interval=60):
         logging.info(f"🚨 Моніторинг тривог запущений з інтервалом {interval} сек")
         while True:
             try:
@@ -262,8 +262,18 @@ class AirAlertsMonitor:
                 # --- Надсилання завершених подій ---
                 # Перевіряємо чи потрібно групувати відбої
                 if self.should_group_end_alerts(ended_alerts, all_alerts_dict):
-                    logging.info(f"📤 Надсилаємо загальний відбій тривоги для України (масовий відбій: {len(ended_alerts)} областей)")
-                    await self.send_alert("Україна відбій повітряної тривоги")
+                    # Створюємо список областей з відбоєм
+                    regions_list = []
+                    for key in ended_alerts:
+                        location, alert_type = key
+                        if alert_type == 'air_raid':
+                            regions_list.append(location)
+                    
+                    # Формуємо повідомлення з переліком областей
+                    message = f"✅ Відбій повітряної тривоги в: {', '.join(regions_list)}"
+                    
+                    logging.info(f"📤 Надсилаємо загальний відбій тривоги для {len(regions_list)} областей")
+                    await self.send_alert(message)
                     self.last_mass_end_time = now
                 else:
                     # Надсилаємо окремі відбої

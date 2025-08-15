@@ -251,18 +251,33 @@ class NewsCollector:
                     if not self.is_good_image_size(image_url):
                         continue
                     
+                    # Отримуємо повний текст статті для більш детального опису
+                    full_text = ""
+                    article_url = entry.get('link', '')
+                    if article_url:
+                        try:
+                            full_text = self.get_full_article_text(article_url)
+                            if full_text:
+                                logger.info(f"📖 Отримано повний текст статті: {len(full_text)} символів")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Не вдалося отримати повний текст: {e}")
+                    
+                    # Формуємо детальний опис
+                    detailed_description = self.create_detailed_description(summary, full_text)
+                    
                     # Створюємо новину
                     news_item = {
                         'title': title,
-                        'description': summary,
-                        'link': entry.get('link', ''),
+                        'description': detailed_description,
+                        'full_text': full_text,  # Зберігаємо повний текст для подальшого використання
+                        'link': article_url,
                         'image_url': image_url,
                         'source': source_info['name'],
                         'source_key': source_key,
                         'category': source_info.get('category', 'unknown'),
                         'language': language,
                         'published': entry.get('published', ''),
-                        'id': entry.get('id', entry.get('link', ''))
+                        'id': entry.get('id', article_url)
                     }
                     
                     news_list.append(news_item)
@@ -287,6 +302,80 @@ class NewsCollector:
             logger.error(f"Помилка при зборі новин з {source_info['name']}: {e}")
             return []
 
+    def create_detailed_description(self, summary: str, full_text: str) -> str:
+        """Створює детальний опис новини, поєднуючи RSS опис та повний текст"""
+        try:
+            # Починаємо з RSS опису
+            description = summary or ""
+            
+            # Якщо є повний текст, додаємо його частину
+            if full_text and len(full_text) > 100:
+                # Очищаємо повний текст від зайвих пробілів
+                clean_full_text = ' '.join(full_text.split())
+                
+                # Якщо RSS опис короткий або порожній, використовуємо повний текст
+                if len(description) < 150:
+                    # Беремо перші 250-300 символів з повного тексту
+                    if len(clean_full_text) > 300:
+                        # Шукаємо кінець речення близько до 300 символів
+                        cut_point = 300
+                        for i in range(250, 350):
+                            if i < len(clean_full_text):
+                                if clean_full_text[i] in '.!?':
+                                    cut_point = i + 1
+                                    break
+                        
+                        description = clean_full_text[:cut_point].strip()
+                        if not description.endswith(('.', '!', '?')):
+                            description += "..."
+                    else:
+                        description = clean_full_text
+                else:
+                    # Якщо RSS опис достатньо довгий, додаємо трохи з повного тексту
+                    if len(clean_full_text) > 200:
+                        # Додаємо додаткову інформацію з повного тексту
+                        additional_text = clean_full_text[:200]
+                        # Шукаємо кінець речення
+                        for i in range(150, 200):
+                            if i < len(additional_text):
+                                if additional_text[i] in '.!?':
+                                    additional_text = additional_text[:i+1]
+                                    break
+                        
+                        if additional_text and not additional_text.endswith(('.', '!', '?')):
+                            additional_text += "..."
+                        
+                        # Поєднуємо опис та додаткову інформацію
+                        if description and additional_text:
+                            description = f"{description}\n\n{additional_text}"
+                        elif additional_text:
+                            description = additional_text
+            
+            # Очищаємо HTML теги
+            if description:
+                soup = BeautifulSoup(description, 'html.parser')
+                description = soup.get_text(separator=' ', strip=True)
+                
+                # Обмежуємо довжину
+                if len(description) > 400:
+                    # Шукаємо кінець речення близько до 400 символів
+                    cut_point = 400
+                    for i in range(350, 450):
+                        if i < len(description):
+                            if description[i] in '.!?':
+                                cut_point = i + 1
+                                break
+                    
+                    description = description[:cut_point].strip()
+                    if not description.endswith(('.', '!', '?')):
+                        description += "..."
+            
+            return description
+            
+        except Exception as e:
+            logger.warning(f"Помилка при створенні детального опису: {e}")
+            return summary or ""
+
     def get_full_article_text(self, url: str) -> str:
         try:
             response = self.session.get(url, timeout=15, proxies={})
@@ -295,33 +384,85 @@ class NewsCollector:
 
             soup = BeautifulSoup(response.content, 'html.parser')
 
-            for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+            # Видаляємо непотрібні елементи
+            for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe', 'form']):
                 element.decompose()
 
+            # Список селекторів для основного контенту (в порядку пріоритету)
             content_selectors = [
                 'article',
                 '.content',
                 '.article-content',
                 '.post-content',
                 '.entry-content',
+                '.news-content',
+                '.story-content',
                 'main',
-                '.main-content'
+                '.main-content',
+                '.text-content',
+                '.body-content'
             ]
 
             content = None
             for selector in content_selectors:
                 content = soup.select_one(selector)
                 if content:
+                    logger.info(f"📖 Знайдено контент за селектором: {selector}")
                     break
 
             if not content:
+                # Якщо не знайшли за селекторами, шукаємо за класами
+                for tag in soup.find_all(['div', 'section']):
+                    class_names = tag.get('class', [])
+                    if isinstance(class_names, list):
+                        for class_name in class_names:
+                            if any(keyword in class_name.lower() for keyword in ['content', 'article', 'post', 'story', 'text']):
+                                content = tag
+                                logger.info(f"📖 Знайдено контент за класом: {class_name}")
+                                break
+                        if content:
+                            break
+
+            if not content:
+                # Остання спроба - використовуємо body
                 content = soup.find('body')
+                logger.info("📖 Використовуємо body як контент")
 
             if content:
+                # Видаляємо додаткові непотрібні елементи з контенту
+                for element in content(['script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe', 'form', 'button', 'input']):
+                    element.decompose()
+                
+                # Видаляємо елементи з рекламою та соціальними мережами
+                for element in content.find_all(['div', 'span'], class_=lambda x: x and any(keyword in x.lower() for keyword in ['ad', 'advertisement', 'social', 'share', 'comment', 'related'])):
+                    element.decompose()
+                
+                # Отримуємо текст
                 text = content.get_text(separator=' ', strip=True)
-                lines = [line.strip() for line in text.split('\n') if line.strip()]
+                
+                # Очищаємо текст
+                lines = []
+                for line in text.split('\n'):
+                    line = line.strip()
+                    if line and len(line) > 20:  # Пропускаємо дуже короткі рядки
+                        # Видаляємо зайві пробіли
+                        line = ' '.join(line.split())
+                        lines.append(line)
+                
                 text = ' '.join(lines)
-                return text[:2000]
+                
+                # Обмежуємо довжину
+                if len(text) > 1500:
+                    text = text[:1500]
+                    # Шукаємо кінець речення
+                    for i in range(1450, 1500):
+                        if i < len(text):
+                            if text[i] in '.!?':
+                                text = text[:i+1]
+                                break
+                
+                logger.info(f"📖 Отримано текст довжиною {len(text)} символів")
+                return text
 
             return ""
         except Exception as e:

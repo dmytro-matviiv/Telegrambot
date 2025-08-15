@@ -73,16 +73,29 @@ class TelegramPublisher:
         
         category_emoji = category_emojis.get(category, '📰')
         
-        # Обрізаємо текст до допустимої довжини для Telegram (1024 символи)
-        max_length = 900  # Залишаємо місце для посилання та джерела
+        # Встановлюємо оптимальний ліміт для новин
+        max_length = 1200  # Обмежуємо довжину для кращої читабельності
         
-        # Формуємо текст
+        # Формуємо заголовок
         text = f"{category_emoji} <b>{title}</b>\n\n"
         
         if description:
             # Обрізаємо опис якщо він занадто довгий
-            if len(description) > max_length - len(text):
-                description = description[:max_length - len(text) - 3] + "..."
+            available_length = max_length - len(text) - 200  # Залишаємо місце для посилання та джерела
+            
+            if len(description) > available_length:
+                # Шукаємо кінець речення близько до ліміту
+                cut_point = available_length
+                for i in range(available_length - 100, available_length + 50):
+                    if i < len(description):
+                        if description[i] in '.!?':
+                            cut_point = i + 1
+                            break
+                
+                description = description[:cut_point].strip()
+                if not description.endswith(('.', '!', '?')):
+                    description += "..."
+            
             text += f"{description}\n\n"
         
         # Додаємо посилання та джерело
