@@ -119,7 +119,7 @@ IMAGE_DOWNLOAD_TIMEOUT = 30
 PUBLISHED_NEWS_FILE = 'published_news.json'
 
 # Токен для API повітряних тривог (alerts.in.ua)
-ALERTS_API_TOKEN = "ed1f73bbaaecda208a960c2a84e20de7ae241d6fab2203"
+ALERTS_API_TOKEN = os.getenv('ALERTS_API_TOKEN')
 
 # Налаштування групування відбоїв тривоги
 MASS_END_THRESHOLD = 2  # Мінімальна кількість областей для масового відбою
