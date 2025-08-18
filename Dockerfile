@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Копіюємо файли залежностей
-COPY requirements-docker-minimal.txt /app/requirements.txt
+COPY requirements-railway.txt /app/requirements.txt
 
 # Створюємо віртуальне середовище та встановлюємо залежності
 RUN python -m venv /opt/venv
@@ -19,19 +19,19 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Встановлюємо pip та залежності з обробкою помилок
 RUN pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt || \
-    (echo "Помилка встановлення залежностей, спробуємо альтернативний підхід" && \
-     pip install --no-cache-dir --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org -r requirements.txt)
+    pip install --no-cache-dir -r requirements.txt
 
 # Копіюємо код додатку
 COPY . /app/
 
-# Встановлюємо шлях до віртуального середовища
-ENV NIXPACKS_PATH=/opt/venv/bin:$NIXPACKS_PATH
-
 # Встановлюємо змінні середовища
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
+
+# Створюємо користувача для безпеки
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
 
 # Запускаємо бота
 CMD ["python", "main.py"]
