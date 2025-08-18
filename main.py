@@ -55,7 +55,7 @@ def start_health_server():
 class NewsBot:
     def __init__(self):
         self.publisher = TelegramPublisher()
-        self.news_collector = NewsCollector(self.publisher)
+        self.news_collector = NewsCollector()  # Не передаємо publisher
         self.alerts_monitor = AirAlertsMonitor(self.publisher)
         self.memorial_scheduler = MemorialMessageScheduler(self.publisher)
 
@@ -72,13 +72,48 @@ class NewsBot:
             
             # Запускаємо всі компоненти
             await asyncio.gather(
-                self.news_collector.start(),
+                self.run_news_collector(),
                 self.alerts_monitor.monitor(),
-                self.memorial_scheduler.start()
+                self.memorial_scheduler.monitor_memorial_schedule()
             )
             
         except Exception as e:
             logging.error(f"❌ Помилка запуску бота: {e}")
+            raise
+        finally:
+            # Закриваємо aiohttp сесію
+            if hasattr(self.publisher, 'session') and self.publisher.session:
+                await self.publisher.session.close()
+                logging.info("🔒 aiohttp сесію закрито")
+
+    async def run_news_collector(self):
+        """Запускає збір новин"""
+        try:
+            while True:
+                # Збираємо новини
+                all_news = self.news_collector.collect_all_news()
+                
+                if all_news:
+                    logging.info(f"📰 Знайдено {len(all_news)} нових новин")
+                    
+                    # Публікуємо новини через publisher
+                    for news in all_news[:1]:  # Публікуємо по одній новині
+                        try:
+                            await self.publisher.publish_news(news)
+                            # Позначаємо як опубліковану
+                            news_id = f"{news['source_key']}_{news['id']}"
+                            self.news_collector.mark_as_published(news_id, news['source_key'])
+                            logging.info(f"✅ Опубліковано новину: {news['title'][:50]}...")
+                        except Exception as e:
+                            logging.error(f"❌ Помилка публікації новини: {e}")
+                else:
+                    logging.info("📭 Нові новини не знайдено")
+                
+                # Чекаємо перед наступною перевіркою
+                await asyncio.sleep(3500)  # 58 хвилин
+                
+        except Exception as e:
+            logging.error(f"❌ Помилка в зборі новин: {e}")
             raise
 
 async def main():
