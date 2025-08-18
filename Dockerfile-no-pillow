@@ -1,33 +1,23 @@
 # Використовуємо стабільну версію Python
 FROM python:3.11-slim
 
-# Встановлюємо системні залежності для Pillow та інших пакетів
+# Встановлюємо системні залежності
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
-    libjpeg-dev \
-    libpng-dev \
-    libfreetype6-dev \
-    libwebp-dev \
-    libtiff5-dev \
-    libopenjp2-7-dev \
-    liblcms2-dev \
-    libharfbuzz-dev \
-    libfribidi-dev \
-    libxcb1-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Встановлюємо робочу директорію
 WORKDIR /app
 
-# Копіюємо файли залежностей
-COPY requirements-railway.txt /app/requirements.txt
+# Копіюємо файли залежностей (без Pillow)
+COPY requirements-railway-no-pillow.txt /app/requirements.txt
 
 # Створюємо віртуальне середовище та встановлюємо залежності
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Встановлюємо pip та залежності з обробкою помилок
+# Встановлюємо pip та залежності
 RUN pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt
 
