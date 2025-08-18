@@ -9,27 +9,27 @@ CHANNEL_ID = os.getenv('CHANNEL_ID')
 
 # Джерела новин (RSS та веб-сайти)
 NEWS_SOURCES = {
-    # Світові новини (3 джерела)
+    # Світові новини (замінюємо на українські)
     'bbc_world': {
-        'name': 'BBC World',
-        'rss': 'https://feeds.bbci.co.uk/news/world/rss.xml',
-        'website': 'https://www.bbc.com/news/world',
+        'name': 'Наві України',
+        'rss': 'https://navi.ua/rss',
+        'website': 'https://navi.ua',
         'category': 'world',
-        'language': 'en'
+        'language': 'uk'
     },
     'reuters_world': {
-        'name': 'Reuters World',
-        'rss': 'https://feeds.reuters.com/Reuters/worldNews',
-        'website': 'https://www.reuters.com/world',
+        'name': 'Еспресо',
+        'rss': 'https://espreso.tv/rss',
+        'website': 'https://espreso.tv',
         'category': 'world',
-        'language': 'en'
+        'language': 'uk'
     },
     'cnn_world': {
-        'name': 'CNN World',
-        'rss': 'http://rss.cnn.com/rss/edition_world.rss',
-        'website': 'https://www.cnn.com/world',
+        'name': '24 Канал',
+        'rss': 'https://24tv.ua/rss',
+        'website': 'https://24tv.ua',
         'category': 'world',
-        'language': 'en'
+        'language': 'uk'
     },
     
     # Українські новини (4 джерела)
@@ -56,52 +56,52 @@ NEWS_SOURCES = {
         'language': 'uk'
     },
     
-    # Винаходи та технології (3 джерела)
+    # Винаходи та технології (замінюємо на українські)
     'techcrunch': {
-        'name': 'TechCrunch',
-        'rss': 'https://techcrunch.com/feed/',
-        'website': 'https://techcrunch.com',
+        'name': 'AIN.UA',
+        'rss': 'https://ain.ua/feed/',
+        'website': 'https://ain.ua',
         'category': 'inventions',
-        'language': 'en'
+        'language': 'uk'
     },
     'wired_tech': {
-        'name': 'Wired Technology',
-        'rss': 'https://www.wired.com/feed/rss',
-        'website': 'https://www.wired.com',
+        'name': 'Доун',
+        'rss': 'https://dou.ua/feed/',
+        'website': 'https://dou.ua',
         'category': 'inventions',
-        'language': 'en'
+        'language': 'uk'
     },
     'the_verge': {
-        'name': 'The Verge',
-        'rss': 'https://www.theverge.com/rss/index.xml',
-        'website': 'https://www.theverge.com',
+        'name': 'ITC.ua',
+        'rss': 'https://itc.ua/feed/',
+        'website': 'https://itc.ua',
         'category': 'inventions',
-        'language': 'en'
+        'language': 'uk'
     },
     
-    # Зіркове життя (1 джерело)
+    # Зіркове життя (замінюємо на українське)
     'people': {
-        'name': 'People',
-        'rss': 'https://people.com/feed/',
-        'website': 'https://people.com',
+        'name': 'Клік',
+        'rss': 'https://clutch.ua/feed/',
+        'website': 'https://clutch.ua',
         'category': 'celebrity',
-        'language': 'en'
+        'language': 'uk'
     },
     
-    # Війна з Україною (2 джерела)
+    # Війна з Україною (замінюємо на українські)
     'defense_news': {
-        'name': 'Defense News',
-        'rss': 'https://www.defensenews.com/rss/',
-        'website': 'https://www.defensenews.com',
+        'name': 'Мілітарний',
+        'rss': 'https://mil.in.ua/feed/',
+        'website': 'https://mil.in.ua',
         'category': 'war',
-        'language': 'en'
+        'language': 'uk'
     },
     'war_zone': {
-        'name': 'The War Zone',
-        'rss': 'https://www.thedrive.com/the-war-zone/rss',
-        'website': 'https://www.thedrive.com/the-war-zone',
+        'name': 'АрміяInform',
+        'rss': 'https://armyinform.com.ua/feed/',
+        'website': 'https://armyinform.com.ua',
         'category': 'war',
-        'language': 'en'
+        'language': 'uk'
     }
 }
 

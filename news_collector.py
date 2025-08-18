@@ -235,20 +235,12 @@ class NewsCollector:
                     # Отримуємо дані новини
                     title = entry.get('title', '')
                     summary = entry.get('summary', '')
-                    language = source_info.get('language', 'en')
+                    language = source_info.get('language', 'uk')  # За замовчуванням українська
                     
-                    # Перевіряємо мову та перекладаємо якщо потрібно
-                    if language == 'en':
-                        # Перекладаємо англійські новини
-                        if title:
-                            title = self.translate_text(title)
-                        if summary:
-                            summary = self.translate_text(summary)
-                        logger.info(f"🔄 Перекладено новину: {title[:50]}...")
-                    elif language == 'uk':
-                        # Перевіряємо чи це українська мова
-                        if not self.is_ukrainian_content(title, summary):
-                            continue
+                    # Перевіряємо чи це українська мова (всі джерела тепер українські)
+                    if not self.is_ukrainian_content(title, summary):
+                        logger.warning(f"⚠️ Пропускаємо не українську новину: {title[:50]}...")
+                        continue
                     
                     # Швидко шукаємо фото
                     image_url = self.extract_image_url(entry, entry.get('link', ''))
@@ -660,6 +652,42 @@ class NewsCollector:
                                 logger.info(f"📸 TSN альтернативне зображення: {src[:80]}...")
                                 return src
 
+                        # Спеціальна логіка для Наві України
+                        elif source_key == 'bbc_world':
+                            navi_images = []
+                            for img in soup.find_all('img'):
+                                src = img.get('src') or img.get('data-src') or ''
+                                if not src or not src.startswith('http'):
+                                    continue
+                                if is_bad_image(src):
+                                    continue
+                                if 'navi.ua' in src:
+                                    if any(size in src for size in ['1200x630', '1200x800', '800x600', '1600x900', '1920x1080', '1280x720']):
+                                        logger.info(f"📸 Наві України основне зображення: {src[:80]}...")
+                                        return src
+                                    navi_images.append(src)
+                            for src in navi_images:
+                                logger.info(f"📸 Наві України альтернативне зображення: {src[:80]}...")
+                                return src
+
+                        # Спеціальна логіка для Еспресо
+                        elif source_key == 'reuters_world':
+                            espreso_images = []
+                            for img in soup.find_all('img'):
+                                src = img.get('src') or img.get('data-src') or ''
+                                if not src or not src.startswith('http'):
+                                    continue
+                                if is_bad_image(src):
+                                    continue
+                                if 'espreso.tv' in src:
+                                    if any(size in src for size in ['1200x630', '1200x800', '800x600', '1600x900', '1920x1080', '1280x720']):
+                                        logger.info(f"📸 Еспресо основне зображення: {src[:80]}...")
+                                        return src
+                                    espreso_images.append(src)
+                            for src in espreso_images:
+                                logger.info(f"📸 Еспресо альтернативне зображення: {src[:80]}...")
+                                return src
+
                         # Загальна логіка
                         images = []
                         for img in soup.find_all('img'):
@@ -692,11 +720,11 @@ class NewsCollector:
         
         # Визначаємо категорії та їх джерела
         categories = {
-            'world': ['bbc_world', 'reuters_world', 'cnn_world'],
-            'ukraine': ['tsn', 'unian', 'pravda'],
-            'inventions': ['techcrunch', 'wired_tech', 'the_verge'],
-            'celebrity': ['people'],
-            'war': ['defense_news', 'war_zone']
+            'world': ['bbc_world', 'reuters_world', 'cnn_world'],  # Наві України, Еспресо, 24 Канал
+            'ukraine': ['tsn', 'unian', 'pravda'],                # ТСН, УНІАН, Українська правда
+            'inventions': ['techcrunch', 'wired_tech', 'the_verge'], # AIN.UA, Доун, ITC.ua
+            'celebrity': ['people'],                              # Клік
+            'war': ['defense_news', 'war_zone']                   # Мілітарний, АрміяInform
         }
         
         logger.info("🔄 Збираємо новини з усіх категорій...")
