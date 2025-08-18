@@ -276,7 +276,7 @@ class AirAlertsMonitor:
                     location = alert.get('location_title', '')
                     started_at = alert.get('started_at', '')
                     if is_end:
-                        return f"✅ <b>Відбій тривоги</b> — {location}"
+                        return f"✅ <b>Відбій повітряної тривоги</b> — {location}"
                     msg = f"🚨 <b>Повітряна тривога</b> — {location}"
                     return msg
 
