@@ -184,15 +184,23 @@ class NewsCollector:
     def is_good_image_size(self, image_url: str) -> bool:
         """Швидка перевірка розміру фото"""
         try:
-            response = self.session.get(image_url, timeout=5, stream=True)
-            if response.status_code != 200:
+            # Перевіряємо чи це не аналітичне посилання
+            if any(analytics in image_url.lower() for analytics in ['google-analytics', 'facebook.com/tr', 'googletagmanager']):
                 return False
             
-            from PIL import Image
-            from io import BytesIO
-            img = Image.open(BytesIO(response.content))
-            width, height = img.size
-            return width >= 400 and height >= 200
+            # Перевіряємо чи це не іконка або логотип
+            if any(icon in image_url.lower() for icon in ['icon', 'logo', 'avatar', 'thumb']):
+                return False
+            
+            # Перевіряємо розширення файлу
+            if image_url.endswith(('.svg', '.gif')):
+                return False
+            
+            # Якщо URL виглядає нормально, приймаємо зображення
+            if image_url.startswith('http') and len(image_url) > 20:
+                return True
+            
+            return False
         except:
             return False
     
@@ -244,6 +252,10 @@ class NewsCollector:
                     
                     # Швидко шукаємо фото
                     image_url = self.extract_image_url(entry, entry.get('link', ''))
+                    if not image_url:
+                        # Спеціальна обробка для різних джерел
+                        image_url = self.extract_image_for_source(entry, entry.get('link', ''), source_key)
+                    
                     if not image_url:
                         continue  # Пропускаємо без фото
                     
@@ -508,29 +520,83 @@ class NewsCollector:
                         img_tags = soup.find_all('img')
                         for img in img_tags:
                             src = img.get('src', '')
-                            if src and src.startswith('http') and 'tsn.ua' in src:
-                                # Пріоритет для зображень ТСН
-                                if 'thumbs' in src and ('1200x630' in src or '800x600' in src):
-                                    logger.info(f"📸 Знайдено основне зображення ТСН: {src[:50]}...")
+                            if src and src.startswith('http'):
+                                # Фільтруємо аналітичні та Facebook посилання
+                                if any(analytics in src.lower() for analytics in ['google-analytics', 'facebook.com/tr', 'googletagmanager', 'facebook.com']):
+                                    continue
+                                # Перевіряємо розмір зображення (пропускаємо маленькі іконки)
+                                if any(size in src.lower() for size in ['thumb', 'icon', 'logo', 'avatar', '16x16', '32x32', '48x48']):
+                                    continue
+                                # Пропускаємо SVG та GIF
+                                if src.endswith(('.svg', '.gif')):
+                                    continue
+                                # Пріоритет для великих зображень
+                                if any(size in src.lower() for size in ['1200x630', '800x600', '1200x800', '1600x900', '1920x1080']):
+                                    logger.info(f"📸 Знайдено велике зображення: {src[:50]}...")
                                     return src
                                 images.append(src)
                         
                         # 2. Шукаємо в основному контенті
-                        main_content = soup.find('article') or soup.find('main') or soup.find('.content')
+                        main_content = soup.find('article') or soup.find('main') or soup.find('.content') or soup.find('.article-content') or soup.find('.post-content')
                         if main_content:
                             main_images = main_content.find_all('img')
                             for img in main_images:
                                 src = img.get('src', '')
-                                if src and src.startswith('http') and 'tsn.ua' in src:
-                                    if 'thumbs' in src and ('1200x630' in src or '800x600' in src):
-                                        logger.info(f"📸 Знайдено зображення в контенті: {src[:50]}...")
+                                if src and src.startswith('http'):
+                                    # Фільтруємо аналітичні та Facebook посилання
+                                    if any(analytics in src.lower() for analytics in ['google-analytics', 'facebook.com/tr', 'googletagmanager', 'facebook.com']):
+                                        continue
+                                    # Перевіряємо розмір зображення
+                                    if any(size in src.lower() for size in ['thumb', 'icon', 'logo', 'avatar', '16x16', '32x32', '48x48']):
+                                        continue
+                                    if src.endswith(('.svg', '.gif')):
+                                        continue
+                                    # Пріоритет для великих зображень
+                                    if any(size in src.lower() for size in ['1200x630', '800x600', '1200x800', '1600x900', '1920x1080']):
+                                        logger.info(f"📸 Знайдено велике зображення в контенті: {src[:50]}...")
                                         return src
                                     images.append(src)
                         
-                        # 3. Повертаємо перше знайдене зображення ТСН
+                        # 3. Шукаємо в різних контейнерах для зображень
+                        image_containers = [
+                            '.hero-image', '.featured-image', '.lead-image', '.main-image',
+                            '.article-image', '.post-image', '.story-image', '.news-image',
+                            '.image-container', '.media-container', '.photo-container',
+                            '[data-image]', '[data-src]', '.lazy-image'
+                        ]
+                        
+                        for container_selector in image_containers:
+                            try:
+                                container = soup.select_one(container_selector)
+                                if container:
+                                    img = container.find('img')
+                                    if img:
+                                        src = img.get('src') or img.get('data-src') or img.get('data-image')
+                                        if src and src.startswith('http'):
+                                            if any(size in src.lower() for size in ['thumb', 'icon', 'logo', 'avatar', '16x16', '32x32', '48x48']):
+                                                continue
+                                            if src.endswith(('.svg', '.gif')):
+                                                continue
+                                            logger.info(f"📸 Знайдено зображення в контейнері {container_selector}: {src[:50]}...")
+                                            return src
+                            except:
+                                continue
+                        
+                        # 4. Шукаємо за атрибутами data-src та data-image
+                        for img in soup.find_all('img'):
+                            src = img.get('data-src') or img.get('data-image') or img.get('data-lazy')
+                            if src and src.startswith('http'):
+                                if any(size in src.lower() for size in ['thumb', 'icon', 'logo', 'avatar', '16x16', '32x32', '48x48']):
+                                    continue
+                                if src.endswith(('.svg', '.gif')):
+                                    continue
+                                logger.info(f"📸 Знайдено зображення з data-атрибуту: {src[:50]}...")
+                                return src
+                        
+                        # 5. Повертаємо перше знайдене зображення
                         for img_url in images:
-                            if 'tsn.ua' in img_url and not img_url.endswith('.svg'):
-                                logger.info(f"📸 Використовуємо зображення ТСН: {img_url[:50]}...")
+                            if not img_url.endswith(('.svg', '.gif')):
+                                logger.info(f"📸 Використовуємо зображення: {img_url[:50]}...")
                                 return img_url
                                 
                 except Exception as e:
@@ -541,6 +607,84 @@ class NewsCollector:
         except Exception as e:
             logger.error(f"Помилка при витягуванні зображення: {e}")
             return ""  # Повертаємо порожній рядок якщо помилка
+
+    def extract_image_for_source(self, entry, article_url: str, source_key: str) -> str:
+        """Спеціальна обробка для різних джерел новин, щоб краще знаходити зображення"""
+        try:
+            def is_bad_image(url: str) -> bool:
+                u = url.lower()
+                if any(bad in u for bad in ['google-analytics', 'facebook.com/tr', 'googletagmanager', 'doubleclick.net', 'pixel']) or u.endswith(('.svg', '.gif')) or any(icon in u for icon in ['icon', 'logo', 'avatar', 'thumb']):
+                    return True
+                return False
+
+            # Перевіряємо медіа контент на зображення
+            if hasattr(entry, 'media_content') and entry.media_content:
+                for media in entry.media_content:
+                    url = media.get('url') or media.get('href')
+                    if url and media.get('type', '').startswith('image/') and not is_bad_image(url):
+                        logger.info(f"📸 Спеціально зображення в медіа контенті для {source_key}: {url[:50]}...")
+                        return url
+
+            # Перевіряємо опис на зображення
+            if entry.get('summary'):
+                soup = BeautifulSoup(entry['summary'], 'html.parser')
+                img = soup.find('img')
+                if img:
+                    url = img.get('src') or img.get('data-src')
+                    if url and url.startswith('http') and not is_bad_image(url):
+                        logger.info(f"📸 Спеціально зображення в описі для {source_key}: {url[:50]}...")
+                        return url
+
+            # Перевіряємо повний текст статті
+            if article_url:
+                try:
+                    response = self.session.get(article_url, timeout=15)
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.content, 'html.parser')
+
+                        # Спеціальна логіка для ТСН
+                        if source_key == 'tsn':
+                            tsn_images = []
+                            for img in soup.find_all('img'):
+                                src = img.get('src') or img.get('data-src') or ''
+                                if not src or not src.startswith('http'):
+                                    continue
+                                if is_bad_image(src):
+                                    continue
+                                if 'img.tsn.ua' in src and 'thumb' in src:
+                                    if any(size in src for size in ['1200x630', '1200x800', '800x600', '1600x900', '1920x1080', '1280x720']):
+                                        logger.info(f"📸 TSN основне зображення: {src[:80]}...")
+                                        return src
+                                    tsn_images.append(src)
+                            for src in tsn_images:
+                                logger.info(f"📸 TSN альтернативне зображення: {src[:80]}...")
+                                return src
+
+                        # Загальна логіка
+                        images = []
+                        for img in soup.find_all('img'):
+                            src = img.get('src') or img.get('data-src') or img.get('data-image') or ''
+                            if not src or not src.startswith('http'):
+                                continue
+                            if is_bad_image(src):
+                                continue
+                            # Пріоритет для великих зображень
+                            if any(size in src.lower() for size in ['1200x630', '800x600', '1200x800', '1600x900', '1920x1080']):
+                                logger.info(f"📸 Спеціально велике зображення в контенті для {source_key}: {src[:50]}...")
+                                return src
+                            images.append(src)
+
+                        if images:
+                            logger.info(f"📸 Спеціально використовуємо зображення для {source_key}: {images[0][:50]}...")
+                            return images[0]
+                except Exception as e:
+                    logger.warning(f"Помилка при отриманні повного тексту для спеціальної обробки: {e}")
+
+            return ""
+
+        except Exception as e:
+            logger.error(f"Помилка при спеціальній обробці зображення: {e}")
+            return ""
 
     def collect_all_news(self) -> List[Dict]:
         """Збирає новини з усіх категорій та перемішує їх"""

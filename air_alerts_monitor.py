@@ -132,7 +132,7 @@ class AirAlertsMonitor:
 
     def should_group_end_alerts(self, ended_alerts, all_alerts_dict):
         """Перевіряє чи потрібно групувати відбої тривоги"""
-        if len(ended_alerts) >= MASS_END_THRESHOLD:  # Більше половини областей мають відбій
+        if len(ended_alerts) >= MASS_END_THRESHOLD:  # Мінімум 2 області мають відбій
             now = datetime.datetime.now(datetime.timezone.utc)
             end_times = []
             
@@ -159,6 +159,58 @@ class AirAlertsMonitor:
                     return True
         
         return False
+
+    def add_to_ended_alerts_buffer(self, ended_alerts, all_alerts_dict):
+        """Додає відбої до буфера для групування"""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        
+        for key in ended_alerts:
+            location, alert_type = key
+            if alert_type != 'air_raid':
+                continue
+                
+            # Додаємо до буфера з поточним часом
+            self.ended_alerts_buffer.append({
+                'location': location,
+                'time': now,
+                'key': key
+            })
+        
+        # Очищаємо старий буфер (старше 2 хвилин)
+        cutoff_time = now - datetime.timedelta(minutes=2)
+        self.ended_alerts_buffer = [
+            item for item in self.ended_alerts_buffer 
+            if item['time'] > cutoff_time
+        ]
+
+    def get_grouped_end_alerts(self):
+        """Отримує групу відбоїв для публікації"""
+        if len(self.ended_alerts_buffer) < MASS_END_THRESHOLD:
+            return []
+        
+        # Групуємо відбої за часовим вікном
+        now = datetime.datetime.now(datetime.timezone.utc)
+        cutoff_time = now - datetime.timedelta(minutes=MASS_END_TIME_WINDOW)
+        
+        recent_ends = [
+            item for item in self.ended_alerts_buffer 
+            if item['time'] > cutoff_time
+        ]
+        
+        if len(recent_ends) >= MASS_END_THRESHOLD:
+            # Видаляємо ці відбої з буфера
+            locations = [item['location'] for item in recent_ends]
+            keys_to_remove = [item['key'] for item in recent_ends]
+            
+            # Видаляємо з буфера
+            self.ended_alerts_buffer = [
+                item for item in self.ended_alerts_buffer 
+                if item['key'] not in keys_to_remove
+            ]
+            
+            return locations
+        
+        return []
 
     async def send_alert(self, text):
         await self.publisher.send_simple_message(text)
@@ -260,26 +312,28 @@ class AirAlertsMonitor:
                         await self.send_alert(text)
 
                 # --- Надсилання завершених подій ---
-                # Перевіряємо чи потрібно групувати відбої
-                if self.should_group_end_alerts(ended_alerts, all_alerts_dict):
-                    # Створюємо список областей з відбоєм
-                    regions_list = []
-                    for key in ended_alerts:
-                        location, alert_type = key
-                        if alert_type == 'air_raid':
-                            regions_list.append(location)
-                    
-                    # Формуємо повідомлення з переліком областей
-                    message = f"✅ Відбій повітряної тривоги в: {', '.join(regions_list)}"
-                    
-                    logging.info(f"📤 Надсилаємо загальний відбій тривоги для {len(regions_list)} областей")
+                # Додаємо відбої до буфера
+                if ended_alerts:
+                    self.add_to_ended_alerts_buffer(ended_alerts, all_alerts_dict)
+                
+                # Перевіряємо чи є група відбоїв для публікації
+                grouped_end_locations = self.get_grouped_end_alerts()
+                
+                if grouped_end_locations:
+                    # Публікуємо групу відбоїв
+                    message = f"✅ <b>Відбій повітряної тривоги</b> — {', '.join(grouped_end_locations)}"
+                    logging.info(f"📤 Надсилаємо групу відбоїв тривоги для {len(grouped_end_locations)} областей: {', '.join(grouped_end_locations)}")
                     await self.send_alert(message)
-                    self.last_mass_end_time = now
                 else:
-                    # Надсилаємо окремі відбої
+                    # Надсилаємо окремі відбої тільки якщо їх немає в буфері
                     for key in ended_alerts:
                         location, alert_type = key
                         if alert_type != 'air_raid':
+                            continue
+                        
+                        # Перевіряємо, чи цей відбій вже в буфері
+                        if any(item['key'] == key for item in self.ended_alerts_buffer):
+                            logging.info(f"⏩ Відбій {location} в буфері, чекаємо групування")
                             continue
                         
                         # Перевіряємо, чи є завершена тривога в поточних даних API
