@@ -6,6 +6,8 @@ from news_collector import NewsCollector
 from telegram_publisher import TelegramPublisher
 from air_alerts_monitor import AirAlertsMonitor
 from memorial_messages import MemorialMessageScheduler
+from content_scheduler import ContentScheduler
+from group_engagement_scheduler import GroupEngagementScheduler
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import socket
@@ -58,6 +60,8 @@ class NewsBot:
         self.news_collector = NewsCollector()  # Не передаємо publisher
         self.alerts_monitor = AirAlertsMonitor(self.publisher)
         self.memorial_scheduler = MemorialMessageScheduler(self.publisher)
+        self.content_scheduler = ContentScheduler(self.publisher, self.news_collector)
+        self.group_scheduler = GroupEngagementScheduler(self.publisher.bot)
 
     async def start(self):
         """Запускає бота"""
@@ -74,7 +78,9 @@ class NewsBot:
             await asyncio.gather(
                 self.run_news_collector(),
                 self.alerts_monitor.monitor(),
-                self.memorial_scheduler.monitor_memorial_schedule()
+                self.memorial_scheduler.monitor_memorial_schedule(),
+                self.content_scheduler.monitor_schedule(),
+                self.group_scheduler.monitor()
             )
             
         except Exception as e:

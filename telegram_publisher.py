@@ -11,6 +11,8 @@ from config import BOT_TOKEN, CHANNEL_ID, DEFAULT_IMAGE_URL, MAX_TEXT_LENGTH, IM
 import random
 from bs4 import BeautifulSoup
 import os
+import subprocess
+import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,8 @@ class TelegramPublisher:
         except Exception as e:
             logger.error(f"Помилка при завантаженні зображення: {e}")
             return None
+
+    # Видалено логіку завантаження відео
 
     def format_news_text(self, news_item: Dict) -> str:
         """Форматує текст новини для Telegram"""
@@ -144,6 +148,23 @@ class TelegramPublisher:
         try:
             text = self.format_news_text(news_item)
             
+            # Якщо є відео — спробуємо відео
+            video_url = news_item.get('video_url', '')
+            if video_url:
+                video_data = await self.download_video(video_url)
+                if video_data:
+                    try:
+                        await self.bot.send_video(
+                            chat_id=CHANNEL_ID,
+                            video=video_data,
+                            caption=text,
+                            parse_mode='HTML'
+                        )
+                        logger.info(f"Опубліковано новину з відео: {news_item.get('title', '')[:50]}...")
+                        return True
+                    except Exception as e:
+                        logger.warning(f"Не вдалося опублікувати відео, спробуємо фото/текст: {e}")
+
             # Публікуємо з зображенням
             image_url = news_item.get('image_url', '')
             image_data = await self.download_image(image_url)
