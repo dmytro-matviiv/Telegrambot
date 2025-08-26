@@ -76,11 +76,11 @@ class NewsBot:
             
             # Запускаємо всі компоненти
             await asyncio.gather(
-                self.run_news_collector(),  # Відновлено - новини тільки в канал
+                self.run_news_collector(),  # Новини тільки в групу
                 self.alerts_monitor.monitor(),
                 self.memorial_scheduler.monitor_memorial_schedule(),
-                self.content_scheduler.monitor_schedule(),
-                self.group_scheduler.monitor()
+                self.content_scheduler.monitor_schedule()
+                # self.group_scheduler.monitor()  # Вимкнено - не надсилаємо повідомлення для залучення
             )
             
         except Exception as e:

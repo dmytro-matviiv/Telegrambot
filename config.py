@@ -5,7 +5,9 @@ load_dotenv()
 
 # Telegram налаштування
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-CHANNEL_ID = os.getenv('CHANNEL_ID', '@newstime20')
+# ID групи (новини будуть публікуватися тільки тут)
+CHANNEL_ID = os.getenv('CHANNEL_ID', '@GlobalNOChat')
+# ID чату в групі (тільки для залучення аудиторії - опитування, дискусії)
 GROUP_CHAT_ID = os.getenv('GROUP_CHAT_ID', '@GlobalNOChat')
 
 # Джерела новин (RSS та веб-сайти)
