@@ -57,7 +57,7 @@ class ContentScheduler:
                 return
             
             # Отримати свіжі новини
-            news_items = await self.news_collector.get_fresh_news()
+            news_items = self.news_collector.collect_all_news()
             
             if not news_items:
                 logger.warning("📰 Немає свіжих новин для публікації")

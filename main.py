@@ -76,7 +76,7 @@ class NewsBot:
             
             # Запускаємо всі компоненти
             await asyncio.gather(
-                self.run_news_collector(),
+                self.run_news_collector(),  # Відновлено - новини тільки в канал
                 self.alerts_monitor.monitor(),
                 self.memorial_scheduler.monitor_memorial_schedule(),
                 self.content_scheduler.monitor_schedule(),
@@ -116,7 +116,7 @@ class NewsBot:
                     logging.info("📭 Нові новини не знайдено")
                 
                 # Чекаємо перед наступною перевіркою
-                await asyncio.sleep(3500)  # 58 хвилин
+                await asyncio.sleep(3600)  # 1 година
                 
         except Exception as e:
             logging.error(f"❌ Помилка в зборі новин: {e}")
