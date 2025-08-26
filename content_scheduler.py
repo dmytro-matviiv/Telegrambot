@@ -1,158 +1,87 @@
 import asyncio
 import logging
 from datetime import datetime, time, timedelta
-from typing import List, Dict, Optional, Tuple
 import pytz
-
+from typing import List
 from telegram_publisher import TelegramPublisher
 from news_collector import NewsCollector
-from video_sources import fetch_recent_videos
-
+from config import CHANNEL_ID
 
 logger = logging.getLogger(__name__)
 
 
 class ContentScheduler:
-    """
-    Schedules warm‑tone, slot‑based posting for the channel (Kyiv timezone).
-    Keeps logic simple: at each slot, fetch fresh mixed news and publish
-    1–2 items with hashtags and CTA, avoiding duplicates via NewsCollector.
-    """
-
-    def __init__(self, publisher: TelegramPublisher, collector: NewsCollector):
+    def __init__(self, publisher: TelegramPublisher, news_collector: NewsCollector):
         self.publisher = publisher
-        self.collector = collector
-        self.kyiv_tz = pytz.timezone('Europe/Kiev')
-        # Default slot schedule: (hour, minute, label)
-        self.slots: List[Tuple[int, int, str]] = [
-            (7, 45, 'morning_digest'),
-            (12, 30, 'midday_updates'),
-            (16, 30, 'world_economy'),
-            (20, 30, 'evening_summary'),
+        self.news_collector = news_collector
+        self.channel_id = CHANNEL_ID
+        self.tz = pytz.timezone('Europe/Kiev')
+
+        # Розклад публікацій (Київ)
+        self.publish_slots = [
+            (7, 45),   # Ранок
+            (12, 30),  # Обід
+            (16, 30),  # Вечір
+            (20, 30),  # Ніч
         ]
-        # How many news to publish per slot
-        self.items_per_slot = 1
 
-    def _now_kyiv(self) -> datetime:
-        return datetime.now(self.kyiv_tz)
+    def now(self):
+        return datetime.now(self.tz)
 
-    def _next_slot_dt(self) -> datetime:
-        now = self._now_kyiv()
-        today = now.date()
-        # Build candidate datetimes for today
-        candidates = []
-        for h, m, _ in self.slots:
-            candidates.append(self.kyiv_tz.localize(datetime.combine(today, time(h, m))))
-        # Find the next slot time >= now; if none, choose first slot tomorrow
+    def local_dt(self, h: int, m: int, day_offset: int = 0):
+        d = (self.now().date() + timedelta(days=day_offset))
+        return self.tz.localize(datetime.combine(d, time(h, m)))
+
+    def next_fire(self) -> datetime:
+        now = self.now()
+        # Кандидати сьогодні і завтра
+        candidates: List[datetime] = []
+        for h, m in self.publish_slots:
+            candidates.append(self.local_dt(h, m, 0))
+            candidates.append(self.local_dt(h, m, 1))
+        
+        # Обрати найближчий у майбутньому
         for dt in sorted(candidates):
-            if dt >= now - timedelta(seconds=5):
+            if dt > now + timedelta(seconds=2):
                 return dt
-        # Tomorrow first slot
-        h, m, _ = sorted(self.slots)[0]
-        tomorrow = today + timedelta(days=1)
-        return self.kyiv_tz.localize(datetime.combine(tomorrow, time(h, m)))
+        # Запасний варіант — завтра перший слот
+        h, m = self.publish_slots[0]
+        return self.local_dt(h, m, 1)
 
-    def _slot_for_time(self, dt: datetime) -> Optional[str]:
-        for h, m, label in self.slots:
-            if dt.hour == h and dt.minute == m:
-                return label
-        return None
-
-    def _build_hashtags(self, label: str, news_item: Dict) -> str:
-        category = news_item.get('category', 'unknown')
-        mapping = {
-            'world': '#світ',
-            'ukraine': '#україна',
-            'inventions': '#техно',
-            'celebrity': '#суспільство',
-            'war': '#фронт',
-        }
-        slot_tag = {
-            'morning_digest': '#ранковий_дайджест',
-            'midday_updates': '#апдейт',
-            'world_economy': '#економіка',
-            'evening_summary': '#вечірній_підсумок',
-        }.get(label, '')
-        cat_tag = mapping.get(category, '#новини')
-        tags = ' '.join(t for t in [slot_tag, cat_tag] if t)
-        return tags
-
-    def _append_warm_cta(self, news_item: Dict, label: str) -> Dict:
-        # Clone and enrich description with hashtags and CTA
-        item = dict(news_item)
-        description = item.get('description') or ''
-        tags = self._build_hashtags(label, item)
-        cta = "\n\nЯкщо було корисно — перешліть другу. Це допомагає нам рости."
-        extra = f"\n\n{tags}\n{cta}" if tags else f"\n\n{cta}"
-        # Keep description concise; publisher handles truncation too
-        item['description'] = (description or '').strip() + extra
-        return item
-
-    def _pick_news_for_slot(self, all_news: List[Dict], label: str) -> List[Dict]:
-        if not all_news:
-            return []
-        # Відео пріоритет прибрано
-        # Prefer categories based on slot
-        preferred_order = {
-            'morning_digest': ['ukraine', 'war', 'world'],
-            'midday_updates': ['ukraine', 'world', 'war'],
-            'world_economy': ['world', 'inventions', 'ukraine'],
-            'evening_summary': ['ukraine', 'world', 'war'],
-        }.get(label, ['ukraine', 'world', 'war', 'inventions', 'celebrity'])
-
-        # Stable selection: first items matching preferred categories
-        selected: List[Dict] = []
-        for category in preferred_order:
-            for item in all_news:
-                if item.get('category') == category and item not in selected:
-                    selected.append(item)
-                    if len(selected) >= self.items_per_slot:
-                        return selected
-        # Fallback: take first available
-        return selected or all_news[: self.items_per_slot]
-
-    async def _publish_slot(self, label: str) -> None:
+    async def publish_scheduled_content(self):
         try:
-            logger.info(f"[Scheduler] ⏱️ Slot '{label}': collecting news…")
-            news = self.collector.collect_all_news()
-            picks = self._pick_news_for_slot(news, label)
-            # Fallback на YouTube прибрано
-            if not picks:
-                logger.info(f"[Scheduler] No news to publish for slot '{label}'")
+            # Отримати свіжі новини
+            news_items = await self.news_collector.get_fresh_news()
+            
+            if not news_items:
+                logger.warning("📰 Немає свіжих новин для публікації")
                 return
 
-            for item in picks:
-                enriched = self._append_warm_cta(item, label)
-                success = await self.publisher.publish_news(enriched)
-                if success:
-                    news_id = f"{item['source_key']}_{item['id']}"
-                    self.collector.mark_as_published(news_id, item['source_key'])
-                    logger.info(f"[Scheduler] ✅ Published for slot '{label}': {item.get('title','')[:80]}…")
-                else:
-                    logger.warning(f"[Scheduler] ❌ Failed to publish for slot '{label}'")
+            # Опублікувати першу новину
+            news_item = news_items[0]
+            await self.publisher.publish_news(news_item)
+            logger.info(f"📰 Опубліковано за розкладом: {news_item['title'][:50]}...")
+            
         except Exception as e:
-            logger.error(f"[Scheduler] Exception in slot '{label}': {e}")
+            logger.error(f"❌ Помилка публікації за розкладом: {e}")
 
-    async def monitor_schedule(self) -> None:
-        logger.info("[Scheduler] 🚀 ContentScheduler started (Kyiv timezone)")
+    async def monitor_schedule(self):
+        logger.info("🚀 Запущено ContentScheduler")
         while True:
             try:
-                next_dt = self._next_slot_dt()
-                now = self._now_kyiv()
-                sleep_seconds = max(1, int((next_dt - now).total_seconds()))
-                logger.info(f"[Scheduler] Next slot at {next_dt.strftime('%Y-%m-%d %H:%M')} (sleep {sleep_seconds}s)")
-                await asyncio.sleep(sleep_seconds)
+                nxt = self.next_fire()
+                now = self.now()
+                sleep_s = max(1, int((nxt - now).total_seconds()))
+                logger.info(f"📅 Next publish at {nxt.strftime('%Y-%m-%d %H:%M')}, sleep {sleep_s}s")
+                await asyncio.sleep(sleep_s)
 
-                # Small alignment window to avoid drift
-                current = self._now_kyiv()
-                label = self._slot_for_time(current)
-                if label:
-                    await self._publish_slot(label)
-                else:
-                    logger.debug("[Scheduler] Woke up outside a labeled slot; continuing…")
-                    await asyncio.sleep(5)
+                # Перевірити, чи настав час публікації
+                current = self.now()
+                for h, m in self.publish_slots:
+                    if current.hour == h and current.minute == m:
+                        await self.publish_scheduled_content()
+                        break
+                        
             except Exception as e:
-                logger.error(f"[Scheduler] Monitor loop error: {e}")
+                logger.error(f"❌ Помилка в ContentScheduler: {e}")
                 await asyncio.sleep(10)
-
-
