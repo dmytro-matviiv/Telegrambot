@@ -15,13 +15,14 @@ class GroupEngagementScheduler:
         self.group_chat = GROUP_CHAT_ID
         self.tz = pytz.timezone('Europe/Kiev')
 
-        # Розклад (Київ): ранок/обід/вечір + щоденний CTA, тижневий топ-коментар
+        # Розклад (Київ): спілкування + розіграш
         self.daily_slots = [
             (8, 15, 'qotd'),         # Питання дня (опитування)
             (12, 45, 'mini_discuss'),# Міні-дискусія
             (17, 30, 'ugc_prompt'),  # UGC-збір
-            (21, 15, 'daily_cta'),   # Щоденний CTA
         ]
+        # Розіграш через день о 20:00
+        self.raffle_slot = (20, 0)
         self.weekly_slot = (19, 30, 6, 'top_comment')  # Нд 19:30
 
     def now(self):
@@ -84,13 +85,13 @@ class GroupEngagementScheduler:
         except Exception as e:
             logger.error(f"[Group] ❌ Помилка UGC: {e}")
 
-    async def send_daily_cta(self):
-        text = "Перешліть 1 другу — допоможете нам рости. І лишіть реакцію + 1 думку в коментарях."
+    async def send_raffle_reminder(self):
+        text = "🎁 РОЗІГРАШ 500 ГРН! 1 раз на місяць! Лишайте коментарі під постами — переможця оголосимо в кінці місяця!"
         try:
             await self.bot.send_message(chat_id=self.group_chat, text=text)
-            logger.info("[Group] ✅ Надіслано щоденний CTA")
+            logger.info("[Group] ✅ Надіслано нагадування про розіграш")
         except Exception as e:
-            logger.error(f"[Group] ❌ Помилка CTA: {e}")
+            logger.error(f"[Group] ❌ Помилка розіграшу: {e}")
 
     async def send_top_comment_weekly(self):
         text = (
@@ -109,8 +110,6 @@ class GroupEngagementScheduler:
             await self.send_mini_discussion()
         elif label == 'ugc_prompt':
             await self.send_ugc_prompt()
-        elif label == 'daily_cta':
-            await self.send_daily_cta()
 
     async def monitor(self):
         logger.info("[Group] 🚀 Запущено GroupEngagementScheduler")
@@ -128,6 +127,11 @@ class GroupEngagementScheduler:
                 wh, wm, wday, wlabel = self.weekly_slot
                 if current.weekday() == wday and current.hour == wh and current.minute == wm:
                     await self.send_top_comment_weekly()
+                    continue
+                # Розіграш через день о 20:00
+                rh, rm = self.raffle_slot
+                if current.hour == rh and current.minute == rm and current.day % 2 == 0:
+                    await self.send_raffle_reminder()
                     continue
                 # Щоденні
                 for h, m, label in self.daily_slots:

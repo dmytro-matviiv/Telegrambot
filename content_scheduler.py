@@ -17,12 +17,12 @@ class ContentScheduler:
         self.channel_id = CHANNEL_ID
         self.tz = pytz.timezone('Europe/Kiev')
 
-        # Розклад публікацій (Київ)
+        # Розклад публікацій (Київ) - тільки з 05:00 до 21:00
         self.publish_slots = [
             (7, 45),   # Ранок
             (12, 30),  # Обід
             (16, 30),  # Вечір
-            (20, 30),  # Ніч
+            (20, 0),   # Вечір (останній пост)
         ]
 
     def now(self):
@@ -50,6 +50,12 @@ class ContentScheduler:
 
     async def publish_scheduled_content(self):
         try:
+            # Перевірити час - не публікувати з 21:00 до 05:00
+            current_hour = self.now().hour
+            if current_hour >= 21 or current_hour < 5:
+                logger.info(f"🌙 Нічний час ({current_hour}:00) - новини не публікуються")
+                return
+            
             # Отримати свіжі новини
             news_items = await self.news_collector.get_fresh_news()
             
