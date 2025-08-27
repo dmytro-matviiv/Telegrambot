@@ -722,7 +722,7 @@ class NewsCollector:
         categories = {
             'world': ['bbc_world', 'reuters_world', 'cnn_world'],  # Наві України, Еспресо, 24 Канал
             'ukraine': ['tsn', 'unian', 'pravda'],                # ТСН, УНІАН, Українська правда
-            'inventions': ['techcrunch', 'wired_tech', 'the_verge'], # AIN.UA, Доун, ITC.ua
+            'inventions': ['techcrunch', 'wired_tech', 'the_verge'], # Доун, ITC.ua, Dev.ua
             'celebrity': ['people'],                              # Клік
             'war': ['defense_news', 'war_zone']                   # Мілітарний, АрміяInform
         }

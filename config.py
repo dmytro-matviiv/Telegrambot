@@ -61,23 +61,23 @@ NEWS_SOURCES = {
     
     # Винаходи та технології (замінюємо на українські)
     'techcrunch': {
-        'name': 'AIN.UA',
-        'rss': 'https://ain.ua/feed/',
-        'website': 'https://ain.ua',
-        'category': 'inventions',
-        'language': 'uk'
-    },
-    'wired_tech': {
         'name': 'Доун',
         'rss': 'https://dou.ua/feed/',
         'website': 'https://dou.ua',
         'category': 'inventions',
         'language': 'uk'
     },
-    'the_verge': {
+    'wired_tech': {
         'name': 'ITC.ua',
         'rss': 'https://itc.ua/feed/',
         'website': 'https://itc.ua',
+        'category': 'inventions',
+        'language': 'uk'
+    },
+    'the_verge': {
+        'name': 'Dev.ua',
+        'rss': 'https://dev.ua/feed/',
+        'website': 'https://dev.ua',
         'category': 'inventions',
         'language': 'uk'
     },
