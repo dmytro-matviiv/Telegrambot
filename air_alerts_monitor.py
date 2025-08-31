@@ -215,40 +215,7 @@ class AirAlertsMonitor:
     async def send_alert(self, text):
         await self.publisher.send_simple_message(text)
 
-    async def get_current_alerts(self):
-        """Отримує поточні активні тривоги"""
-        try:
-            alerts_data = await self.fetch_alerts()
-            
-            # Перевіряємо формат даних
-            if isinstance(alerts_data, dict) and 'alerts' in alerts_data:
-                alerts_list = alerts_data['alerts']
-            elif isinstance(alerts_data, list):
-                alerts_list = alerts_data
-            else:
-                logging.warning(f"Неочікуваний формат даних: {type(alerts_data)}")
-                return []
 
-            # Фільтруємо тільки активні повітряні тривоги
-            active_alerts = []
-            for alert in alerts_list:
-                if self.is_valid_alert(alert):
-                    location_title = alert.get('location_title', '')
-                    finished_at = alert.get('finished_at')
-                    
-                    # Тільки активні тривоги (без finished_at)
-                    if location_title and not finished_at:
-                        active_alerts.append({
-                            'region': location_title,
-                            'started_at': alert.get('started_at', ''),
-                            'alert_type': alert.get('alert_type', '')
-                        })
-
-            return active_alerts
-            
-        except Exception as e:
-            logging.error(f"Помилка отримання поточних тривог: {e}")
-            return []
 
     async def monitor(self, interval=60):
         logging.info(f"🚨 Моніторинг тривог запущений з інтервалом {interval} сек")
