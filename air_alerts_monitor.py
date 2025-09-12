@@ -2,7 +2,7 @@ import asyncio
 import aiohttp
 import logging
 import os
-from config import ALERTS_API_TOKEN
+from config import ALERTS_API_TOKEN, MASS_ALERT_THRESHOLD, MASS_END_THRESHOLD
 from telegram_publisher import TelegramPublisher
 import datetime
 
@@ -48,6 +48,7 @@ class AirAlertsMonitor:
             return False
             
         location_title = alert.get('location_title', '')
+        location_type = alert.get('location_type', '')
         alert_type = alert.get('alert_type', '')
         finished_at = alert.get('finished_at')
         
@@ -55,8 +56,8 @@ class AirAlertsMonitor:
         if alert_type != 'air_raid':
             return False
             
-        # Показувати тільки активні тривоги (без finished_at)
-        if finished_at:
+        # Показувати тільки тривоги по областях (містах), не по районах
+        if location_type != 'oblast':
             return False
             
         # Не показувати тривоги в окупованих територіях
@@ -68,6 +69,40 @@ class AirAlertsMonitor:
             return False
             
         return True
+    
+    def extract_city_name(self, location_title):
+        """Витягує назву міста/області з повної назви"""
+        # Якщо це вже область, повертаємо як є
+        if 'область' in location_title:
+            return location_title
+        
+        # Якщо це місто, додаємо "область" або залишаємо як є
+        return location_title
+    
+    def group_alerts_by_city(self, alerts):
+        """Групує тривоги по містах/областях"""
+        city_alerts = {}
+        
+        for alert in alerts:
+            if not self.is_valid_alert(alert):
+                continue
+                
+            location_title = alert.get('location_title', '')
+            city_name = self.extract_city_name(location_title)
+            finished_at = alert.get('finished_at')
+            
+            if city_name not in city_alerts:
+                city_alerts[city_name] = {
+                    'active_alerts': [],
+                    'finished_alerts': []
+                }
+            
+            if finished_at:
+                city_alerts[city_name]['finished_alerts'].append(alert)
+            else:
+                city_alerts[city_name]['active_alerts'].append(alert)
+        
+        return city_alerts
 
 
     async def send_alert(self, text):
@@ -105,84 +140,72 @@ class AirAlertsMonitor:
                     await asyncio.sleep(interval)
                     continue
                 
-                # Фільтруємо та обробляємо тривоги
-                current_alerts = set()
-                current_alerts_dict = {}
+                # Групуємо тривоги по містах
+                city_alerts = self.group_alerts_by_city(alerts_list)
                 
-                for alert in alerts_list:
-                    if not self.is_valid_alert(alert):
-                        continue
-                        
-                    location_title = alert.get('location_title', '')
-                    alert_type = alert.get('alert_type', '')
-                    
-                    key = (location_title, alert_type)
-                    current_alerts.add(key)
-                    current_alerts_dict[key] = alert
+                # Формуємо поточні активні міста
+                current_cities = set()
+                for city_name, city_data in city_alerts.items():
+                    if city_data['active_alerts']:  # Є активні тривоги
+                        current_cities.add(city_name)
                 
                 # При першому запуску просто зберігаємо поточні тривоги
                 if self.is_first_run:
                     logging.info("🚀 Перший запуск - зберігаємо поточні тривоги без надсилання")
-                    self.prev_alerts = current_alerts
+                    self.prev_alerts = current_cities
                     self.is_first_run = False
                     
                     # Логуємо поточні тривоги
-                    if current_alerts:
-                        locations = [key[0] for key in current_alerts]
-                        logging.info(f"📊 Поточні активні тривоги: {', '.join(locations)}")
+                    if current_cities:
+                        logging.info(f"📊 Поточні активні міста: {', '.join(current_cities)}")
                     else:
                         logging.info("📊 Активних тривог немає")
                     
                     await asyncio.sleep(interval)
                     continue
                 
-                # Знаходимо нові та завершені тривоги
-                new_alerts = current_alerts - self.prev_alerts
-                ended_alerts = self.prev_alerts - current_alerts
+                # Знаходимо нові та завершені тривоги по містах
+                new_cities = current_cities - self.prev_alerts
+                ended_cities = self.prev_alerts - current_cities
                 
                 # Логуємо статистику
-                if new_alerts:
-                    locations = [key[0] for key in new_alerts]
-                    logging.info(f"🚨 Знайдено {len(new_alerts)} нових тривог: {', '.join(locations)}")
+                if new_cities:
+                    logging.info(f"🚨 Знайдено {len(new_cities)} нових міст з тривогою: {', '.join(new_cities)}")
                 
-                if ended_alerts:
-                    locations = [key[0] for key in ended_alerts]
-                    logging.info(f"✅ Знайдено {len(ended_alerts)} завершених тривог: {', '.join(locations)}")
+                if ended_cities:
+                    logging.info(f"✅ Знайдено {len(ended_cities)} міст з відбоєм тривоги: {', '.join(ended_cities)}")
                 
-                # Надсилаємо повідомлення про нові тривоги
-                for key in new_alerts:
-                    alert = current_alerts_dict[key]
-                    location = alert.get('location_title', '')
-                    started_at = alert.get('started_at', '')
-                    
-                    # Формуємо повідомлення
-                    message = f"🚨 <b>Повітряна тривога</b> — {location}"
-                    
-                    # Додаємо час початку, якщо є
-                    if started_at:
-                        try:
-                            started_dt = datetime.datetime.strptime(started_at[:19], "%Y-%m-%dT%H:%M:%S")
-                            time_str = started_dt.strftime("%H:%M")
-                            message += f" (з {time_str})"
-                        except:
-                            pass
-                    
+                # Перевіряємо чи потрібно групувати повідомлення
+                if len(new_cities) >= MASS_ALERT_THRESHOLD:
+                    # Масовий початок тривоги
+                    cities_list = ', '.join(sorted(new_cities))
+                    message = f"🚨 <b>Повітряна тривога</b> — {cities_list}"
                     await self.send_alert(message)
+                    logging.info(f"📤 Надіслано масову тривогу для {len(new_cities)} міст")
+                elif new_cities:
+                    # Окремі тривоги
+                    for city in new_cities:
+                        message = f"🚨 <b>Повітряна тривога</b> — {city}"
+                        await self.send_alert(message)
                 
-                # Надсилаємо повідомлення про завершені тривоги
-                for key in ended_alerts:
-                    location, alert_type = key
-                    if alert_type == 'air_raid':
-                        message = f"✅ <b>Відбій повітряної тривоги</b> — {location}"
+                if len(ended_cities) >= MASS_END_THRESHOLD:
+                    # Масовий відбій тривоги
+                    cities_list = ', '.join(sorted(ended_cities))
+                    message = f"✅ <b>Відбій повітряної тривоги</b> — {cities_list}"
+                    await self.send_alert(message)
+                    logging.info(f"📤 Надіслано масовий відбій для {len(ended_cities)} міст")
+                elif ended_cities:
+                    # Окремі відбої
+                    for city in ended_cities:
+                        message = f"✅ <b>Відбій повітряної тривоги</b> — {city}"
                         await self.send_alert(message)
                 
                 # Оновлюємо попередні тривоги
-                self.prev_alerts = current_alerts
+                self.prev_alerts = current_cities
                 
                 # Логуємо загальну статистику
-                if current_alerts:
-                    locations = [key[0] for key in current_alerts]
-                    logging.info(f"📊 Загалом активних тривог: {len(current_alerts)} ({', '.join(locations)})")
+                if current_cities:
+                    logging.info(f"📊 Загалом активних міст: {len(current_cities)} ({', '.join(current_cities)})")
                 else:
                     logging.info("📊 Активних тривог немає")
                 

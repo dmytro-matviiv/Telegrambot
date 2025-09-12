@@ -9,6 +9,7 @@ from memorial_messages import MemorialMessageScheduler
 from content_scheduler import ContentScheduler
 from group_engagement_scheduler import GroupEngagementScheduler
 from views_booster import ViewsBooster
+from real_views_booster import RealViewsBooster
 from config import VIEWS_BOOST_ENABLED
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -68,7 +69,8 @@ class NewsBot:
         # Ініціалізуємо накручування переглядів тільки якщо увімкнено
         self.views_booster = None
         if VIEWS_BOOST_ENABLED:
-            self.views_booster = ViewsBooster(self.publisher.bot)
+            # Використовуємо реальний накручувач замість симуляції
+            self.views_booster = RealViewsBooster(self.publisher.bot)
 
     async def start(self):
         """Запускає бота"""
