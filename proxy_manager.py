@@ -1,4 +1,4 @@
-иimport asyncio
+import asyncio
 import aiohttp
 import logging
 import random

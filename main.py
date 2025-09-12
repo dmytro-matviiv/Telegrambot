@@ -9,8 +9,16 @@ from memorial_messages import MemorialMessageScheduler
 from content_scheduler import ContentScheduler
 from group_engagement_scheduler import GroupEngagementScheduler
 from views_booster import ViewsBooster
-from real_views_booster import RealViewsBooster
 from config import VIEWS_BOOST_ENABLED
+
+# Умовний імпорт реального накручувача
+try:
+    from real_views_booster import RealViewsBooster
+    REAL_BOOSTER_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"⚠️ RealViewsBooster недоступний: {e}")
+    RealViewsBooster = None
+    REAL_BOOSTER_AVAILABLE = False
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import socket
@@ -69,8 +77,14 @@ class NewsBot:
         # Ініціалізуємо накручування переглядів тільки якщо увімкнено
         self.views_booster = None
         if VIEWS_BOOST_ENABLED:
-            # Використовуємо реальний накручувач замість симуляції
-            self.views_booster = RealViewsBooster(self.publisher.bot)
+            if REAL_BOOSTER_AVAILABLE and RealViewsBooster:
+                # Використовуємо реальний накручувач
+                self.views_booster = RealViewsBooster(self.publisher.bot)
+                logging.info("📈 Використовується реальний накручувач переглядів")
+            else:
+                # Використовуємо симуляцію як fallback
+                self.views_booster = ViewsBooster(self.publisher.bot)
+                logging.info("📊 Використовується симуляція накручування переглядів")
 
     async def start(self):
         """Запускає бота"""
