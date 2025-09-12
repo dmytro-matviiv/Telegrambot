@@ -8,6 +8,8 @@ from air_alerts_monitor import AirAlertsMonitor
 from memorial_messages import MemorialMessageScheduler
 from content_scheduler import ContentScheduler
 from group_engagement_scheduler import GroupEngagementScheduler
+from views_booster import ViewsBooster
+from config import VIEWS_BOOST_ENABLED
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import socket
@@ -62,6 +64,11 @@ class NewsBot:
         self.memorial_scheduler = MemorialMessageScheduler(self.publisher)
         self.content_scheduler = ContentScheduler(self.publisher, self.news_collector)
         self.group_scheduler = GroupEngagementScheduler(self.publisher.bot)
+        
+        # Ініціалізуємо накручування переглядів тільки якщо увімкнено
+        self.views_booster = None
+        if VIEWS_BOOST_ENABLED:
+            self.views_booster = ViewsBooster(self.publisher.bot)
 
     async def start(self):
         """Запускає бота"""
@@ -75,13 +82,22 @@ class NewsBot:
             logging.info("🚀 Запускаємо бота...")
             
             # Запускаємо всі компоненти
-            await asyncio.gather(
+            tasks = [
                 self.run_news_collector(),  # Новини тільки в групу
                 self.alerts_monitor.monitor(),
                 self.memorial_scheduler.monitor_memorial_schedule(),
                 self.content_scheduler.monitor_schedule()
                 # self.group_scheduler.monitor()  # Вимкнено - не надсилаємо повідомлення для залучення
-            )
+            ]
+            
+            # Додаємо накручування переглядів якщо увімкнено
+            if self.views_booster:
+                tasks.append(self.views_booster.monitor_and_boost())
+                logging.info("📈 Накручування переглядів увімкнено")
+            else:
+                logging.info("📊 Накручування переглядів вимкнено")
+            
+            await asyncio.gather(*tasks)
             
         except Exception as e:
             logging.error(f"❌ Помилка запуску бота: {e}")
