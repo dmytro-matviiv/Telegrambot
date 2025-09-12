@@ -11,7 +11,7 @@ from group_engagement_scheduler import GroupEngagementScheduler
 from views_booster import ViewsBooster
 from config import VIEWS_BOOST_ENABLED
 
-# Умовний імпорт реального накручувача
+# Умовний імпорт накручувачів
 try:
     from real_views_booster import RealViewsBooster
     REAL_BOOSTER_AVAILABLE = True
@@ -19,6 +19,30 @@ except ImportError as e:
     logging.warning(f"⚠️ RealViewsBooster недоступний: {e}")
     RealViewsBooster = None
     REAL_BOOSTER_AVAILABLE = False
+
+try:
+    from web_views_booster import WebViewsBooster
+    WEB_BOOSTER_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"⚠️ WebViewsBooster недоступний: {e}")
+    WebViewsBooster = None
+    WEB_BOOSTER_AVAILABLE = False
+
+try:
+    from selenium_views_booster import SeleniumViewsBooster
+    SELENIUM_BOOSTER_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"⚠️ SeleniumViewsBooster недоступний: {e}")
+    SeleniumViewsBooster = None
+    SELENIUM_BOOSTER_AVAILABLE = False
+
+try:
+    from mtproto_views_booster import MTProtoViewsBooster
+    MTPROTO_BOOSTER_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"⚠️ MTProtoViewsBooster недоступний: {e}")
+    MTProtoViewsBooster = None
+    MTPROTO_BOOSTER_AVAILABLE = False
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import socket
@@ -77,10 +101,23 @@ class NewsBot:
         # Ініціалізуємо накручування переглядів тільки якщо увімкнено
         self.views_booster = None
         if VIEWS_BOOST_ENABLED:
-            if REAL_BOOSTER_AVAILABLE and RealViewsBooster:
+            # Вибираємо найкращий доступний накручувач
+            if WEB_BOOSTER_AVAILABLE and WebViewsBooster:
+                # Використовуємо веб-накручувач (найпростіший)
+                self.views_booster = WebViewsBooster(self.publisher.bot)
+                logging.info("🌐 Використовується веб-накручувач переглядів")
+            elif REAL_BOOSTER_AVAILABLE and RealViewsBooster:
                 # Використовуємо реальний накручувач
                 self.views_booster = RealViewsBooster(self.publisher.bot)
                 logging.info("📈 Використовується реальний накручувач переглядів")
+            elif SELENIUM_BOOSTER_AVAILABLE and SeleniumViewsBooster:
+                # Використовуємо Selenium накручувач
+                self.views_booster = SeleniumViewsBooster(self.publisher.bot)
+                logging.info("🤖 Використовується Selenium накручувач переглядів")
+            elif MTPROTO_BOOSTER_AVAILABLE and MTProtoViewsBooster:
+                # Використовуємо MTProto накручувач
+                self.views_booster = MTProtoViewsBooster(self.publisher.bot)
+                logging.info("⚡ Використовується MTProto накручувач переглядів")
             else:
                 # Використовуємо симуляцію як fallback
                 self.views_booster = ViewsBooster(self.publisher.bot)
