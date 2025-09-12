@@ -1,17 +1,13 @@
-import asyncio
-import aiohttp
 import feedparser
 import requests
 from bs4 import BeautifulSoup
 import json
-import time
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import List, Dict
 import logging
 from config import NEWS_SOURCES, PUBLISHED_NEWS_FILE, DEFAULT_IMAGE_URL
-import re
 import os
 
 logging.basicConfig(level=logging.INFO)
@@ -181,6 +177,66 @@ class NewsCollector:
         text = title + ' ' + summary
         return any(c in ukr_letters for c in text)
     
+    def is_food_related_content(self, title: str, summary: str, full_text: str = '') -> bool:
+        """Перевіряє чи новина стосується приготування їжі, рецептів або кулінарії"""
+        # Об'єднуємо весь текст для перевірки
+        text = f"{title} {summary} {full_text}".lower()
+        
+        # Ключові слова та фрази, пов'язані з їжею та рецептами
+        food_keywords = [
+            # Українські слова
+            'рецепт', 'рецепти', 'приготування', 'кулінарія', 'кухня', 'страва', 'страви',
+            'готувати', 'готуємо', 'приготувати', 'приготуємо', 'смажити', 'варити', 'пекти',
+            'інгредієнти', 'інгредієнт', 'приправи', 'приправа', 'соус', 'соуси',
+            'салат', 'салати', 'суп', 'супи', 'борщ', 'вареники', 'пельмені', 'котлети',
+            'торт', 'торти', 'десерт', 'десерти', 'випічка', 'печиво', 'кекс', 'кекси',
+            'кава', 'чай', 'напій', 'напої', 'коктейль', 'коктейлі',
+            'сніданок', 'обід', 'вечеря', 'перекуска', 'закуска', 'закуски',
+            'хліб', 'молоко', 'сир', 'м\'ясо', 'риба', 'овочі', 'фрукти',
+            'смак', 'смачний', 'смачна', 'смачне', 'аромат', 'ароматний',
+            'калорії', 'калорійність', 'дієта', 'дієтичний', 'здорове харчування',
+            'ресторан', 'ресторани', 'кафе', 'бар', 'бари', 'меню',
+            'шеф-кухар', 'кухар', 'кухарка', 'кулінар', 'кулінари',
+            'майстер-клас', 'майстер-класи', 'кулінарний', 'гастрономічний',
+            
+            # Англійські слова (на випадок, якщо потраплять англійські новини)
+            'recipe', 'recipes', 'cooking', 'cook', 'kitchen', 'food', 'dish', 'dishes',
+            'ingredient', 'ingredients', 'spice', 'spices', 'sauce', 'sauces',
+            'salad', 'salads', 'soup', 'soups', 'cake', 'cakes', 'dessert', 'desserts',
+            'baking', 'baked', 'coffee', 'tea', 'drink', 'drinks', 'cocktail', 'cocktails',
+            'breakfast', 'lunch', 'dinner', 'snack', 'snacks', 'appetizer', 'appetizers',
+            'bread', 'milk', 'cheese', 'meat', 'fish', 'vegetables', 'fruits',
+            'taste', 'tasty', 'delicious', 'flavor', 'flavored', 'aroma', 'aromatic',
+            'calories', 'calorie', 'diet', 'dietary', 'healthy eating', 'nutrition',
+            'restaurant', 'restaurants', 'cafe', 'bar', 'bars', 'menu',
+            'chef', 'cook', 'cooking', 'culinary', 'gastronomic', 'gastronomy',
+            'masterclass', 'master class', 'cooking class', 'food preparation'
+        ]
+        
+        # Перевіряємо наявність ключових слів
+        for keyword in food_keywords:
+            if keyword in text:
+                logger.info(f"🚫 Знайдено ключове слово про їжу: '{keyword}' в новині: {title[:50]}...")
+                return True
+        
+        # Додаткові фрази та словосполучення
+        food_phrases = [
+            'як приготувати', 'як зробити', 'як зварити', 'як спекти', 'як смажити',
+            'рецепт приготування', 'спосіб приготування', 'приготування страви',
+            'кулінарні поради', 'кулінарні секрети', 'кулінарний майстер-клас',
+            'домашня кухня', 'традиційна кухня', 'національна кухня',
+            'здорове харчування', 'дієтичне харчування', 'правильне харчування',
+            'how to cook', 'how to make', 'cooking tips', 'cooking secrets',
+            'home cooking', 'traditional cooking', 'healthy eating'
+        ]
+        
+        for phrase in food_phrases:
+            if phrase in text:
+                logger.info(f"🚫 Знайдено фразу про їжу: '{phrase}' в новині: {title[:50]}...")
+                return True
+        
+        return False
+    
     def is_good_image_size(self, image_url: str) -> bool:
         """Швидка перевірка розміру фото"""
         try:
@@ -229,6 +285,7 @@ class NewsCollector:
             
             news_list = []
             processed_count = 0
+            filtered_food_count = 0  # Лічильник відфільтрованих новин про їжу
             
             for entry in feed.entries[:10]:  # Обмежуємо до 10 новин для швидкості
                 try:
@@ -240,6 +297,12 @@ class NewsCollector:
                     # Перевіряємо чи це українська мова (всі джерела тепер українські)
                     if not self.is_ukrainian_content(title, summary):
                         logger.warning(f"⚠️ Пропускаємо не українську новину: {title[:50]}...")
+                        continue
+                    
+                    # Перевіряємо чи новина не стосується приготування їжі або рецептів
+                    if self.is_food_related_content(title, summary):
+                        logger.warning(f"🍽️ Пропускаємо новину про їжу/рецепти: {title[:50]}...")
+                        filtered_food_count += 1
                         continue
                     
                     # Швидко шукаємо фото
@@ -263,6 +326,12 @@ class NewsCollector:
                             full_text = self.get_full_article_text(article_url)
                             if full_text:
                                 logger.info(f"📖 Отримано повний текст статті: {len(full_text)} символів")
+                                
+                                # Додаткова перевірка повного тексту на кулінарну тематику
+                                if self.is_food_related_content(title, summary, full_text):
+                                    logger.warning(f"🍽️ Пропускаємо новину про їжу/рецепти (перевірка повного тексту): {title[:50]}...")
+                                    filtered_food_count += 1
+                                    continue
                         except Exception as e:
                             logger.warning(f"⚠️ Не вдалося отримати повний текст: {e}")
                     
@@ -299,6 +368,10 @@ class NewsCollector:
                 logger.info(f"✅ {source_info['name']}: знайдено {len(news_list)} новин з фото")
             else:
                 logger.info(f"⏩ {source_info['name']}: немає новин з фото")
+            
+            # Логуємо статистику фільтрації
+            if filtered_food_count > 0:
+                logger.info(f"🍽️ {source_info['name']}: відфільтровано {filtered_food_count} новин про їжу/рецепти")
                 
             return news_list
             
@@ -790,11 +863,3 @@ class NewsCollector:
             self.last_published_time = datetime.now(timezone.utc).isoformat()
         self.save_published_news()
 
-    def cleanup_old_news(self, days: int = 7):
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-        old_news = set()
-
-        # Це місце для реалізації очищення (можна додати за потреби)
-
-        self.published_news -= old_news
-        self.save_published_news()
