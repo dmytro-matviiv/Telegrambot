@@ -2,7 +2,7 @@ import asyncio
 import aiohttp
 import logging
 import os
-from config import ALERTS_API_TOKEN, MASS_ALERT_THRESHOLD, MASS_END_THRESHOLD
+from config import ALERTS_API_TOKEN, MASS_ALERT_THRESHOLD, MASS_END_THRESHOLD, MASS_ALERT_TIME_WINDOW, MASS_END_TIME_WINDOW
 from telegram_publisher import TelegramPublisher
 import datetime
 
@@ -15,6 +15,12 @@ class AirAlertsMonitor:
         self.prev_alerts = set()  # {(location_title, alert_type)}
         self.is_first_run = True
         self.last_check_time = None
+        
+        # Для відстеження масових тривог та відбоїв
+        self.pending_alerts = []  # Список нових тривог в часовому вікні
+        self.pending_ends = []    # Список відбоїв в часовому вікні
+        self.last_mass_alert_time = None
+        self.last_mass_end_time = None
 
     async def fetch_alerts(self):
         """Отримує дані про тривоги з API"""
@@ -104,6 +110,59 @@ class AirAlertsMonitor:
         
         return city_alerts
 
+    def add_to_pending_alerts(self, cities):
+        """Додає нові тривоги до списку очікуючих"""
+        current_time = datetime.datetime.now()
+        for city in cities:
+            self.pending_alerts.append({
+                'city': city,
+                'time': current_time
+            })
+        logging.info(f"📝 Додано {len(cities)} тривог до очікуючих. Всього: {len(self.pending_alerts)}")
+
+    def add_to_pending_ends(self, cities):
+        """Додає відбої до списку очікуючих"""
+        current_time = datetime.datetime.now()
+        for city in cities:
+            self.pending_ends.append({
+                'city': city,
+                'time': current_time
+            })
+        logging.info(f"📝 Додано {len(cities)} відбоїв до очікуючих. Всього: {len(self.pending_ends)}")
+
+    def cleanup_old_pending(self):
+        """Видаляє застарілі записи з списків очікуючих"""
+        current_time = datetime.datetime.now()
+        
+        # Очищаємо застарілі тривоги
+        self.pending_alerts = [
+            alert for alert in self.pending_alerts
+            if (current_time - alert['time']).total_seconds() <= MASS_ALERT_TIME_WINDOW * 60
+        ]
+        
+        # Очищаємо застарілі відбої
+        self.pending_ends = [
+            end for end in self.pending_ends
+            if (current_time - end['time']).total_seconds() <= MASS_END_TIME_WINDOW * 60
+        ]
+
+    def get_pending_alert_cities(self):
+        """Повертає унікальні міста з очікуючих тривог"""
+        return list(set(alert['city'] for alert in self.pending_alerts))
+
+    def get_pending_end_cities(self):
+        """Повертає унікальні міста з очікуючих відбоїв"""
+        return list(set(end['city'] for end in self.pending_ends))
+
+    def clear_pending_alerts(self):
+        """Очищає список очікуючих тривог"""
+        self.pending_alerts.clear()
+        self.last_mass_alert_time = datetime.datetime.now()
+
+    def clear_pending_ends(self):
+        """Очищає список очікуючих відбоїв"""
+        self.pending_ends.clear()
+        self.last_mass_end_time = datetime.datetime.now()
 
     async def send_alert(self, text):
         """Надсилає повідомлення про тривогу"""
@@ -175,27 +234,42 @@ class AirAlertsMonitor:
                 if ended_cities:
                     logging.info(f"✅ Знайдено {len(ended_cities)} міст з відбоєм тривоги: {', '.join(ended_cities)}")
                 
-                # Перевіряємо чи потрібно групувати повідомлення
-                if len(new_cities) >= MASS_ALERT_THRESHOLD:
-                    # Масовий початок тривоги
-                    cities_list = ', '.join(sorted(new_cities))
+                # Очищаємо застарілі записи
+                self.cleanup_old_pending()
+                
+                # Додаємо нові тривоги та відбої до очікуючих
+                if new_cities:
+                    self.add_to_pending_alerts(list(new_cities))
+                
+                if ended_cities:
+                    self.add_to_pending_ends(list(ended_cities))
+                
+                # Перевіряємо чи потрібно відправити масові повідомлення
+                pending_alert_cities = self.get_pending_alert_cities()
+                pending_end_cities = self.get_pending_end_cities()
+                
+                # Масові тривоги
+                if len(pending_alert_cities) >= MASS_ALERT_THRESHOLD:
+                    cities_list = ', '.join(sorted(pending_alert_cities))
                     message = f"🚨 <b>Повітряна тривога</b> — {cities_list}"
                     await self.send_alert(message)
-                    logging.info(f"📤 Надіслано масову тривогу для {len(new_cities)} міст")
+                    logging.info(f"📤 Надіслано масову тривогу для {len(pending_alert_cities)} міст")
+                    self.clear_pending_alerts()
                 elif new_cities:
-                    # Окремі тривоги
+                    # Окремі тривоги (тільки якщо не було масової)
                     for city in new_cities:
                         message = f"🚨 <b>Повітряна тривога</b> — {city}"
                         await self.send_alert(message)
                 
-                if len(ended_cities) >= MASS_END_THRESHOLD:
-                    # Масовий відбій тривоги
-                    cities_list = ', '.join(sorted(ended_cities))
+                # Масові відбої
+                if len(pending_end_cities) >= MASS_END_THRESHOLD:
+                    cities_list = ', '.join(sorted(pending_end_cities))
                     message = f"✅ <b>Відбій повітряної тривоги</b> — {cities_list}"
                     await self.send_alert(message)
-                    logging.info(f"📤 Надіслано масовий відбій для {len(ended_cities)} міст")
+                    logging.info(f"📤 Надіслано масовий відбій для {len(pending_end_cities)} міст")
+                    self.clear_pending_ends()
                 elif ended_cities:
-                    # Окремі відбої
+                    # Окремі відбої (тільки якщо не було масового)
                     for city in ended_cities:
                         message = f"✅ <b>Відбій повітряної тривоги</b> — {city}"
                         await self.send_alert(message)
