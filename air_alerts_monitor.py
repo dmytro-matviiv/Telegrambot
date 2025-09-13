@@ -25,6 +25,8 @@ class AirAlertsMonitor:
         # Для уникнення повторів повідомлень
         self.last_alert_check_time = None  # Час останньої перевірки тривог
         self.alert_delay_minutes = 1       # Затримка в хвилинах перед відправкою
+        self.sent_alerts = set()           # Множина відправлених тривог
+        self.sent_ends = set()             # Множина відправлених відбоїв
 
     async def fetch_alerts(self):
         """Отримує дані про тривоги з API"""
@@ -202,6 +204,36 @@ class AirAlertsMonitor:
         self.last_alert_check_time = datetime.datetime.now()
         logging.info(f"⏰ Позначено час перевірки тривог: {self.last_alert_check_time.strftime('%H:%M:%S')}")
 
+    def is_alert_sent(self, city):
+        """Перевіряє чи було вже відправлено повідомлення про тривогу для міста"""
+        return city in self.sent_alerts
+
+    def is_end_sent(self, city):
+        """Перевіряє чи було вже відправлено повідомлення про відбій для міста"""
+        return city in self.sent_ends
+
+    def mark_alert_sent(self, cities):
+        """Позначає міста як такі, для яких було відправлено повідомлення про тривогу"""
+        for city in cities:
+            self.sent_alerts.add(city)
+        logging.info(f"✅ Позначено як відправлені тривоги для: {', '.join(cities)}")
+
+    def mark_end_sent(self, cities):
+        """Позначає міста як такі, для яких було відправлено повідомлення про відбій"""
+        for city in cities:
+            self.sent_ends.add(city)
+        logging.info(f"✅ Позначено як відправлені відбої для: {', '.join(cities)}")
+
+    def clear_sent_tracking(self):
+        """Очищає відстеження відправлених повідомлень (викликається періодично)"""
+        # Очищаємо стару інформацію кожні 24 години
+        current_time = datetime.datetime.now()
+        if not hasattr(self, 'last_clear_time') or (current_time - self.last_clear_time).total_seconds() > 86400:
+            self.sent_alerts.clear()
+            self.sent_ends.clear()
+            self.last_clear_time = current_time
+            logging.info("🧹 Очищено відстеження відправлених повідомлень")
+
     async def send_alert(self, text):
         """Надсилає повідомлення про тривогу"""
         try:
@@ -265,22 +297,38 @@ class AirAlertsMonitor:
                 new_cities = current_cities - self.prev_alerts
                 ended_cities = self.prev_alerts - current_cities
                 
+                # Фільтруємо вже відправлені повідомлення
+                new_cities_filtered = set()
+                for city in new_cities:
+                    if not self.is_alert_sent(city):
+                        new_cities_filtered.add(city)
+                    else:
+                        logging.info(f"⏭️ Пропускаємо тривогу для {city} - вже відправлено")
+                
+                ended_cities_filtered = set()
+                for city in ended_cities:
+                    if not self.is_end_sent(city):
+                        ended_cities_filtered.add(city)
+                    else:
+                        logging.info(f"⏭️ Пропускаємо відбій для {city} - вже відправлено")
+                
                 # Логуємо статистику
-                if new_cities:
-                    logging.info(f"🚨 Знайдено {len(new_cities)} нових міст з тривогою: {', '.join(new_cities)}")
+                if new_cities_filtered:
+                    logging.info(f"🚨 Знайдено {len(new_cities_filtered)} нових міст з тривогою: {', '.join(new_cities_filtered)}")
                 
-                if ended_cities:
-                    logging.info(f"✅ Знайдено {len(ended_cities)} міст з відбоєм тривоги: {', '.join(ended_cities)}")
+                if ended_cities_filtered:
+                    logging.info(f"✅ Знайдено {len(ended_cities_filtered)} міст з відбоєм тривоги: {', '.join(ended_cities_filtered)}")
                 
-                # Очищаємо застарілі записи
+                # Очищаємо застарілі записи та відстеження
                 self.cleanup_old_pending()
+                self.clear_sent_tracking()
                 
                 # Додаємо нові тривоги та відбої до очікуючих
-                if new_cities:
-                    self.add_to_pending_alerts(list(new_cities))
+                if new_cities_filtered:
+                    self.add_to_pending_alerts(list(new_cities_filtered))
                 
-                if ended_cities:
-                    self.add_to_pending_ends(list(ended_cities))
+                if ended_cities_filtered:
+                    self.add_to_pending_ends(list(ended_cities_filtered))
                 
                 # Перевіряємо чи можна відправляти повідомлення (прошла затримка)
                 if self.should_send_alerts():
@@ -296,12 +344,14 @@ class AirAlertsMonitor:
                         message = f"🚨 <b>Повітряна тривога</b> — {cities_list}"
                         await self.send_alert(message)
                         logging.info(f"📤 Надіслано масову тривогу для {len(pending_alert_cities)} міст")
+                        self.mark_alert_sent(pending_alert_cities)
                         self.clear_pending_alerts()
-                    elif new_cities:
+                    elif new_cities_filtered:
                         # Окремі тривоги (тільки якщо не було масової)
-                        for city in new_cities:
+                        for city in new_cities_filtered:
                             message = f"🚨 <b>Повітряна тривога</b> — {city}"
                             await self.send_alert(message)
+                        self.mark_alert_sent(list(new_cities_filtered))
                     
                     # Масові відбої
                     if len(pending_end_cities) >= MASS_END_THRESHOLD:
@@ -309,24 +359,23 @@ class AirAlertsMonitor:
                         message = f"✅ <b>Відбій повітряної тривоги</b> — {cities_list}"
                         await self.send_alert(message)
                         logging.info(f"📤 Надіслано масовий відбій для {len(pending_end_cities)} міст")
+                        self.mark_end_sent(pending_end_cities)
                         self.clear_pending_ends()
-                    elif ended_cities:
+                    elif ended_cities_filtered:
                         # Окремі відбої (тільки якщо не було масового)
-                        for city in ended_cities:
+                        for city in ended_cities_filtered:
                             message = f"✅ <b>Відбій повітряної тривоги</b> — {city}"
                             await self.send_alert(message)
+                        self.mark_end_sent(list(ended_cities_filtered))
                     
                     # Позначаємо час поточної перевірки
                     self.mark_alert_check_time()
                 else:
                     logging.info("⏳ Очікуємо затримку перед відправкою повідомлень...")
                 
-                # Оновлюємо попередні тривоги тільки після відправки повідомлень
-                if self.should_send_alerts():
-                    self.prev_alerts = current_cities
-                    logging.info("🔄 Оновлено стан попередніх тривог після відправки повідомлень")
-                else:
-                    logging.info("⏳ Зберігаємо попередній стан тривог до завершення затримки")
+                # Оновлюємо попередні тривоги завжди, щоб уникнути повторних виявлень
+                self.prev_alerts = current_cities
+                logging.info("🔄 Оновлено стан попередніх тривог")
                 
                 # Логуємо загальну статистику
                 if current_cities:
