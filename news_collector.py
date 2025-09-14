@@ -336,7 +336,7 @@ class NewsCollector:
                             logger.warning(f"⚠️ Не вдалося отримати повний текст: {e}")
                     
                     # Формуємо детальний опис
-                    detailed_description = self.create_detailed_description(summary, full_text)
+                    detailed_description = self.create_detailed_description(summary, full_text, title)
                     
                     # Створюємо новину
                     news_item = {
@@ -379,79 +379,160 @@ class NewsCollector:
             logger.error(f"Помилка при зборі новин з {source_info['name']}: {e}")
             return []
 
-    def create_detailed_description(self, summary: str, full_text: str) -> str:
-        """Створює детальний опис новини, поєднуючи RSS опис та повний текст"""
+    def create_detailed_description(self, summary: str, full_text: str, title: str = "") -> str:
+        """Створює детальний опис новини, уникаючи повторів та роблячи текст цікавим"""
         try:
-            # Починаємо з RSS опису
-            description = summary or ""
-            
-            # Якщо є повний текст, додаємо його частину
-            if full_text and len(full_text) > 100:
-                # Очищаємо повний текст від зайвих пробілів
-                clean_full_text = ' '.join(full_text.split())
-                
-                # Якщо RSS опис короткий або порожній, використовуємо повний текст
-                if len(description) < 150:
-                    # Беремо перші 250-300 символів з повного тексту
-                    if len(clean_full_text) > 300:
-                        # Шукаємо кінець речення близько до 300 символів
-                        cut_point = 300
-                        for i in range(250, 350):
-                            if i < len(clean_full_text):
-                                if clean_full_text[i] in '.!?':
-                                    cut_point = i + 1
-                                    break
-                        
-                        description = clean_full_text[:cut_point].strip()
-                        if not description.endswith(('.', '!', '?')):
-                            description += "..."
-                    else:
-                        description = clean_full_text
-                else:
-                    # Якщо RSS опис достатньо довгий, додаємо трохи з повного тексту
-                    if len(clean_full_text) > 200:
-                        # Додаємо додаткову інформацію з повного тексту
-                        additional_text = clean_full_text[:200]
-                        # Шукаємо кінець речення
-                        for i in range(150, 200):
-                            if i < len(additional_text):
-                                if additional_text[i] in '.!?':
-                                    additional_text = additional_text[:i+1]
-                                    break
-                        
-                        if additional_text and not additional_text.endswith(('.', '!', '?')):
-                            additional_text += "..."
-                        
-                        # Поєднуємо опис та додаткову інформацію
-                        if description and additional_text:
-                            description = f"{description}\n\n{additional_text}"
-                        elif additional_text:
-                            description = additional_text
+            # Очищаємо вхідні дані
+            summary = summary or ""
+            full_text = full_text or ""
+            title = title or ""
             
             # Очищаємо HTML теги
-            if description:
-                soup = BeautifulSoup(description, 'html.parser')
-                description = soup.get_text(separator=' ', strip=True)
+            if summary:
+                soup = BeautifulSoup(summary, 'html.parser')
+                summary = soup.get_text(separator=' ', strip=True)
+            
+            if full_text:
+                soup = BeautifulSoup(full_text, 'html.parser')
+                full_text = soup.get_text(separator=' ', strip=True)
+            
+            # Нормалізуємо пробіли
+            summary = ' '.join(summary.split())
+            full_text = ' '.join(full_text.split())
+            title = ' '.join(title.split())
+            
+            # Видаляємо заголовок з опису та повного тексту, якщо він там є
+            if title:
+                # Видаляємо заголовок з початку опису
+                if summary.lower().startswith(title.lower()):
+                    summary = summary[len(title):].strip()
+                    # Видаляємо зайві двокрапки та тире
+                    if summary.startswith((':', '-', '—', '–')):
+                        summary = summary[1:].strip()
                 
-                # Обмежуємо довжину
-                if len(description) > 400:
-                    # Шукаємо кінець речення близько до 400 символів
-                    cut_point = 400
-                    for i in range(350, 450):
-                        if i < len(description):
-                            if description[i] in '.!?':
-                                cut_point = i + 1
-                                break
-                    
-                    description = description[:cut_point].strip()
-                    if not description.endswith(('.', '!', '?')):
-                        description += "..."
+                # Видаляємо заголовок з початку повного тексту
+                if full_text.lower().startswith(title.lower()):
+                    full_text = full_text[len(title):].strip()
+                    if full_text.startswith((':', '-', '—', '–')):
+                        full_text = full_text[1:].strip()
+            
+            # Видаляємо повторення між summary та full_text
+            if summary and full_text:
+                # Якщо summary є частиною full_text, використовуємо тільки full_text
+                if summary.lower() in full_text.lower():
+                    summary = ""
+                # Якщо full_text починається з summary, обрізаємо summary
+                elif full_text.lower().startswith(summary.lower()):
+                    summary = ""
+            
+            # Формуємо фінальний опис
+            description = ""
+            
+            # Пріоритет надаємо повному тексту для більшої інформативності
+            if full_text and len(full_text) >= 200:
+                description = full_text
+            # Якщо повного тексту немає або він короткий, використовуємо summary
+            elif summary and len(summary) >= 100:
+                description = summary
+            # Якщо є і summary і full_text, поєднуємо їх
+            elif summary and full_text:
+                # Перевіряємо, чи не дублюються вони
+                if summary.lower() not in full_text.lower() and full_text.lower() not in summary.lower():
+                    description = f"{summary} {full_text}"
+                else:
+                    description = full_text if len(full_text) > len(summary) else summary
+            # Якщо немає нічого, повертаємо порожній рядок
+            else:
+                return ""
+            
+            # Обмежуємо довжину до 800 символів для повної інформації в каналі
+            if len(description) > 800:
+                # Шукаємо кінець речення близько до 800 символів
+                cut_point = 800
+                for i in range(750, 850):
+                    if i < len(description):
+                        if description[i] in '.!?':
+                            cut_point = i + 1
+                            break
+                
+                description = description[:cut_point].strip()
+                
+                # Додаємо три крапки, якщо текст обрізано
+                if not description.endswith(('.', '!', '?')):
+                    description += "..."
+            
+            # Додаткове очищення від зайвих символів
+            description = description.replace('  ', ' ').replace('\n', ' ').strip()
+            
+            # Покращуємо читабельність тексту
+            description = self.improve_text_readability(description)
             
             return description
             
         except Exception as e:
             logger.warning(f"Помилка при створенні детального опису: {e}")
             return summary or ""
+
+    def improve_text_readability(self, text: str) -> str:
+        """Покращує читабельність тексту, видаляючи повторення та зайві слова"""
+        try:
+            if not text:
+                return text
+            
+            # Видаляємо повторення речень
+            sentences = text.split('. ')
+            unique_sentences = []
+            seen_sentences = set()
+            
+            for sentence in sentences:
+                # Нормалізуємо речення для порівняння
+                normalized = sentence.lower().strip()
+                if normalized and normalized not in seen_sentences:
+                    unique_sentences.append(sentence.strip())
+                    seen_sentences.add(normalized)
+            
+            text = '. '.join(unique_sentences)
+            
+            # Видаляємо зайві фрази та слова
+            redundant_phrases = [
+                'повний текст новини',
+                'читати далі',
+                'детальніше читайте',
+                'більше інформації',
+                'продовження читайте',
+                'далі читайте',
+                'читати повністю',
+                'повний текст',
+                'детальніше',
+                'більше',
+                'далі',
+                'продовження'
+            ]
+            
+            for phrase in redundant_phrases:
+                text = text.replace(phrase, '').replace(phrase.capitalize(), '')
+            
+            # Видаляємо зайві пробіли та символи
+            text = ' '.join(text.split())
+            text = text.replace('..', '.').replace('...', '...')
+            
+            # Видаляємо повторення слів у реченнях
+            words = text.split()
+            cleaned_words = []
+            prev_word = ""
+            
+            for word in words:
+                if word.lower() != prev_word.lower():
+                    cleaned_words.append(word)
+                    prev_word = word
+            
+            text = ' '.join(cleaned_words)
+            
+            return text.strip()
+            
+        except Exception as e:
+            logger.warning(f"Помилка при покращенні читабельності: {e}")
+            return text
 
     def get_full_article_text(self, url: str) -> str:
         try:
@@ -474,10 +555,21 @@ class NewsCollector:
                 '.entry-content',
                 '.news-content',
                 '.story-content',
+                '.article-body',
+                '.post-body',
+                '.entry-body',
+                '.news-body',
+                '.story-body',
+                '.article-text',
+                '.post-text',
+                '.entry-text',
                 'main',
                 '.main-content',
                 '.text-content',
-                '.body-content'
+                '.body-content',
+                '.article-wrapper',
+                '.post-wrapper',
+                '.entry-wrapper'
             ]
 
             content = None
@@ -493,12 +585,22 @@ class NewsCollector:
                     class_names = tag.get('class', [])
                     if isinstance(class_names, list):
                         for class_name in class_names:
-                            if any(keyword in class_name.lower() for keyword in ['content', 'article', 'post', 'story', 'text']):
+                            if any(keyword in class_name.lower() for keyword in ['content', 'article', 'post', 'story', 'text', 'body', 'wrapper', 'main']):
                                 content = tag
                                 logger.info(f"📖 Знайдено контент за класом: {class_name}")
                                 break
                         if content:
                             break
+            
+            # Додаткова логіка для українських новинних сайтів
+            if not content:
+                # Шукаємо за ID
+                for tag in soup.find_all(['div', 'section'], id=True):
+                    tag_id = tag.get('id', '').lower()
+                    if any(keyword in tag_id for keyword in ['content', 'article', 'post', 'story', 'text', 'body', 'main']):
+                        content = tag
+                        logger.info(f"📖 Знайдено контент за ID: {tag_id}")
+                        break
 
             if not content:
                 # Остання спроба - використовуємо body
@@ -528,11 +630,11 @@ class NewsCollector:
                 
                 text = ' '.join(lines)
                 
-                # Обмежуємо довжину
-                if len(text) > 1500:
-                    text = text[:1500]
+                # Обмежуємо довжину до 2000 символів для більшої інформативності
+                if len(text) > 2000:
+                    text = text[:2000]
                     # Шукаємо кінець речення
-                    for i in range(1450, 1500):
+                    for i in range(1950, 2000):
                         if i < len(text):
                             if text[i] in '.!?':
                                 text = text[:i+1]

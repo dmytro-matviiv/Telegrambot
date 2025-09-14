@@ -59,7 +59,7 @@ class TelegramPublisher:
     # Видалено логіку завантаження відео
 
     def format_news_text(self, news_item: Dict) -> str:
-        """Форматує текст новини для Telegram"""
+        """Форматує текст новини для Telegram, роблячи його цікавим та інформативним"""
         title = news_item.get('title', '')
         description = news_item.get('description', '')
         link = news_item.get('link', '')
@@ -77,15 +77,30 @@ class TelegramPublisher:
         
         category_emoji = category_emojis.get(category, '📰')
         
-        # Встановлюємо оптимальний ліміт для новин
-        max_length = 1200  # Обмежуємо довжину для кращої читабельності
+        # Встановлюємо ліміт для повної інформації в каналі
+        max_length = 2000  # Збільшуємо для повної інформації
         
-        # Формуємо заголовок
+        # Формуємо заголовок з емодзі
         text = f"{category_emoji} <b>{title}</b>\n\n"
         
         if description:
+            # Додаємо цікавий вступ до опису
+            intro_phrases = [
+                "📋 Деталі:",
+                "ℹ️ Інформація:",
+                "🔍 Що відомо:",
+                "📝 Подробиці:",
+                "💡 Важливо:",
+                "📰 Новина:",
+                "🔎 Розкриваємо:"
+            ]
+            
+            # Вибираємо випадковий вступ
+            import random
+            intro = random.choice(intro_phrases)
+            
             # Обрізаємо опис якщо він занадто довгий
-            available_length = max_length - len(text) - 200  # Залишаємо місце для посилання та джерела
+            available_length = max_length - len(text) - len(intro) - 150  # Залишаємо місце для посилання та джерела
             
             if len(description) > available_length:
                 # Шукаємо кінець речення близько до ліміту
@@ -100,11 +115,12 @@ class TelegramPublisher:
                 if not description.endswith(('.', '!', '?')):
                     description += "..."
             
-            text += f"{description}\n\n"
+            text += f"{intro} {description}\n\n"
         
-        # Додаємо посилання та джерело
-        text += f"📰 <a href='{link}'>Читати повністю</a>\n"
+        # Додаємо посилання та джерело з емодзі (менш нав'язливо)
         text += f"📌 Джерело: {source}"
+        if link:
+            text += f"\n🔗 <a href='{link}'>Детальніше на сайті</a>"
         
         return text
 
