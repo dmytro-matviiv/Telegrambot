@@ -416,6 +416,17 @@ class NewsCollector:
                     if full_text.startswith((':', '-', '—', '–')):
                         full_text = full_text[1:].strip()
             
+            # Додаткова очистка від метаданих на початку тексту
+            import re
+            
+            # Видаляємо дати та час з початку
+            summary = re.sub(r'^\d{1,2}\s+(січня|лютого|березня|квітня|травня|червня|липня|серпня|вересня|жовтня|листопада|грудня),?\s+\d{1,2}:\d{2}\s*', '', summary, flags=re.IGNORECASE)
+            full_text = re.sub(r'^\d{1,2}\s+(січня|лютого|березня|квітня|травня|червня|липня|серпня|вересня|жовтня|листопада|грудня),?\s+\d{1,2}:\d{2}\s*', '', full_text, flags=re.IGNORECASE)
+            
+            # Видаляємо "Основні тези" з початку
+            summary = re.sub(r'^Основні тези\s*', '', summary, flags=re.IGNORECASE)
+            full_text = re.sub(r'^Основні тези\s*', '', full_text, flags=re.IGNORECASE)
+            
             # Видаляємо повторення між summary та full_text
             if summary and full_text:
                 # Якщо summary є частиною full_text, використовуємо тільки full_text
@@ -479,6 +490,24 @@ class NewsCollector:
             if not text:
                 return text
             
+            # Видаляємо метадані (дата, час, автор)
+            import re
+            
+            # Видаляємо дати та час
+            text = re.sub(r'\d{1,2}\s+(січня|лютого|березня|квітня|травня|червня|липня|серпня|вересня|жовтня|листопада|грудня),?\s+\d{1,2}:\d{2}', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\d{1,2}\s+вересня,?\s+\d{1,2}:\d{2}', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\d{1,2}:\d{2}', '', text)
+            
+            # Видаляємо імена авторів (зазвичай в кінці рядка)
+            text = re.sub(r'\n\s*[А-ЯІЇЄҐ][а-яіїєґ]+\s+[А-ЯІЇЄҐ][а-яіїєґ]+(?:\s+[А-ЯІЇЄҐ][а-яіїєґ]+)?\s*$', '', text)
+            
+            # Видаляємо "Основні тези"
+            text = re.sub(r'Основні тези\s*', '', text, flags=re.IGNORECASE)
+            
+            # Видаляємо описи фото
+            text = re.sub(r'[А-ЯІЇЄҐ][^.]*\/\s*Фото\s+[^.]*', '', text)
+            text = re.sub(r'Фото\s+[^.]*', '', text, flags=re.IGNORECASE)
+            
             # Видаляємо повторення речень
             sentences = text.split('. ')
             unique_sentences = []
@@ -506,7 +535,12 @@ class NewsCollector:
                 'детальніше',
                 'більше',
                 'далі',
-                'продовження'
+                'продовження',
+                'що відбувається',
+                'що сталося',
+                'що трапилося',
+                'подробиці',
+                'деталі події'
             ]
             
             for phrase in redundant_phrases:
@@ -527,6 +561,10 @@ class NewsCollector:
                     prev_word = word
             
             text = ' '.join(cleaned_words)
+            
+            # Видаляємо порожні речення та зайві пробіли
+            text = re.sub(r'\s+', ' ', text)
+            text = re.sub(r'\.\s*\.', '.', text)
             
             return text.strip()
             

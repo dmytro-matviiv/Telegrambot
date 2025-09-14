@@ -84,23 +84,8 @@ class TelegramPublisher:
         text = f"{category_emoji} <b>{title}</b>\n\n"
         
         if description:
-            # Додаємо цікавий вступ до опису
-            intro_phrases = [
-                "📋 Деталі:",
-                "ℹ️ Інформація:",
-                "🔍 Що відомо:",
-                "📝 Подробиці:",
-                "💡 Важливо:",
-                "📰 Новина:",
-                "🔎 Розкриваємо:"
-            ]
-            
-            # Вибираємо випадковий вступ
-            import random
-            intro = random.choice(intro_phrases)
-            
             # Обрізаємо опис якщо він занадто довгий
-            available_length = max_length - len(text) - len(intro) - 150  # Залишаємо місце для посилання та джерела
+            available_length = max_length - len(text) - 150  # Залишаємо місце для посилання та джерела
             
             if len(description) > available_length:
                 # Шукаємо кінець речення близько до ліміту
@@ -115,7 +100,8 @@ class TelegramPublisher:
                 if not description.endswith(('.', '!', '?')):
                     description += "..."
             
-            text += f"{intro} {description}\n\n"
+            # Додаємо опис без зайвих вступів
+            text += f"{description}\n\n"
         
         # Додаємо посилання та джерело з емодзі (менш нав'язливо)
         text += f"📌 Джерело: {source}"
