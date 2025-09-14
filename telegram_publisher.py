@@ -77,8 +77,8 @@ class TelegramPublisher:
         
         category_emoji = category_emojis.get(category, '📰')
         
-        # Встановлюємо ліміт для повної інформації в каналі
-        max_length = 2000  # Збільшуємо для повної інформації
+        # Встановлюємо ліміт для лаконічної інформації в каналі
+        max_length = 1500  # Оптимізуємо для лаконічності
         
         # Формуємо заголовок з емодзі
         text = f"{category_emoji} <b>{title}</b>\n\n"

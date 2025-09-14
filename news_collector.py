@@ -238,7 +238,7 @@ class NewsCollector:
         return False
     
     def is_good_image_size(self, image_url: str) -> bool:
-        """Швидка перевірка розміру фото"""
+        """Швидка перевірка розміру фото та фільтрація реклами"""
         try:
             # Перевіряємо чи це не аналітичне посилання
             if any(analytics in image_url.lower() for analytics in ['google-analytics', 'facebook.com/tr', 'googletagmanager']):
@@ -246,6 +246,14 @@ class NewsCollector:
             
             # Перевіряємо чи це не іконка або логотип
             if any(icon in image_url.lower() for icon in ['icon', 'logo', 'avatar', 'thumb']):
+                return False
+            
+            # Перевіряємо чи це не реклама
+            if any(ad in image_url.lower() for ad in ['ad', 'advertisement', 'banner', 'promo', 'sponsor']):
+                return False
+            
+            # Перевіряємо чи це не реклама автомобілів
+            if any(car in image_url.lower() for car in ['mazda', 'toyota', 'bmw', 'mercedes', 'audi', 'volkswagen', 'ford', 'chevrolet']):
                 return False
             
             # Перевіряємо розширення файлу
@@ -456,11 +464,11 @@ class NewsCollector:
             else:
                 return ""
             
-            # Обмежуємо довжину до 800 символів для повної інформації в каналі
-            if len(description) > 800:
-                # Шукаємо кінець речення близько до 800 символів
-                cut_point = 800
-                for i in range(750, 850):
+            # Обмежуємо довжину до 600 символів для лаконічності
+            if len(description) > 600:
+                # Шукаємо кінець речення близько до 600 символів
+                cut_point = 600
+                for i in range(550, 650):
                     if i < len(description):
                         if description[i] in '.!?':
                             cut_point = i + 1
@@ -498,8 +506,20 @@ class NewsCollector:
             text = re.sub(r'\d{1,2}\s+вересня,?\s+\d{1,2}:\d{2}', '', text, flags=re.IGNORECASE)
             text = re.sub(r'\d{1,2}:\d{2}', '', text)
             
-            # Видаляємо імена авторів (зазвичай в кінці рядка)
+            # Видаляємо імена авторів та їх біографії
             text = re.sub(r'\n\s*[А-ЯІЇЄҐ][а-яіїєґ]+\s+[А-ЯІЇЄҐ][а-яіїєґ]+(?:\s+[А-ЯІЇЄҐ][а-яіїєґ]+)?\s*$', '', text)
+            
+            # Видаляємо біографії авторів (довгі тексти про автора)
+            bio_patterns = [
+                r'[А-ЯІЇЄҐ][а-яіїєґ]+\s+[А-ЯІЇЄҐ][а-яіїєґ]+[^.]*цікавлюся[^.]*\.',
+                r'[А-ЯІЇЄҐ][а-яіїєґ]+\s+[А-ЯІЇЄҐ][а-яіїєґ]+[^.]*люблю[^.]*\.',
+                r'[А-ЯІЇЄҐ][а-яіїєґ]+\s+[А-ЯІЇЄҐ][а-яіїєґ]+[^.]*розуміюся[^.]*\.',
+                r'[А-ЯІЇЄҐ][а-яіїєґ]+\s+[А-ЯІЇЄҐ][а-яіїєґ]+[^.]*стежу[^.]*\.',
+                r'[А-ЯІЇЄҐ][а-яіїєґ]+\s+[А-ЯІЇЄҐ][а-яіїєґ]+[^.]*пишу[^.]*\.'
+            ]
+            
+            for pattern in bio_patterns:
+                text = re.sub(pattern, '', text, flags=re.IGNORECASE)
             
             # Видаляємо "Основні тези"
             text = re.sub(r'Основні тези\s*', '', text, flags=re.IGNORECASE)
@@ -819,6 +839,12 @@ class NewsCollector:
             def is_bad_image(url: str) -> bool:
                 u = url.lower()
                 if any(bad in u for bad in ['google-analytics', 'facebook.com/tr', 'googletagmanager', 'doubleclick.net', 'pixel']) or u.endswith(('.svg', '.gif')) or any(icon in u for icon in ['icon', 'logo', 'avatar', 'thumb']):
+                    return True
+                # Фільтруємо рекламу
+                if any(ad in u for ad in ['ad', 'advertisement', 'banner', 'promo', 'sponsor']):
+                    return True
+                # Фільтруємо рекламу автомобілів
+                if any(car in u for car in ['mazda', 'toyota', 'bmw', 'mercedes', 'audi', 'volkswagen', 'ford', 'chevrolet']):
                     return True
                 return False
 
