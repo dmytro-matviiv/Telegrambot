@@ -14,9 +14,9 @@ GROUP_CHAT_ID = os.getenv('GROUP_CHAT_ID', '@GlobalNOChat')
 NEWS_SOURCES = {
     # Світові новини (замінюємо на українські)
     'bbc_world': {
-        'name': 'Наві України',
-        'rss': 'https://navi.ua/rss',
-        'website': 'https://navi.ua',
+        'name': 'Запорізька ОДА',
+        'rss': 'https://www.zoda.gov.ua/rss',
+        'website': 'https://www.zoda.gov.ua',
         'category': 'world',
         'language': 'uk'
     },

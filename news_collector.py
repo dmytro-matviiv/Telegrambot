@@ -350,14 +350,16 @@ class NewsCollector:
                         filtered_food_count += 1
                         continue
                     
-                    # Швидко шукаємо фото
+                    # Шукаємо відео та фото
+                    video_url = self.extract_video_url(entry, entry.get('link', ''))
                     image_url = self.extract_image_url(entry, entry.get('link', ''))
-                    if not image_url:
+                    
+                    if not image_url and not video_url:
                         # Спеціальна обробка для різних джерел
                         image_url = self.extract_image_for_source(entry, entry.get('link', ''), source_key)
                     
-                    if not image_url:
-                        continue  # Пропускаємо без фото
+                    if not image_url and not video_url:
+                        continue  # Пропускаємо без медіа
                     
                     # Перевіряємо розмір фото
                     if not self.is_good_image_size(image_url):
@@ -390,6 +392,7 @@ class NewsCollector:
                         'full_text': full_text,  # Зберігаємо повний текст для подальшого використання
                         'link': article_url,
                         'image_url': image_url,
+                        'video_url': video_url,  # Додаємо відео
                         'source': source_info['name'],
                         'source_key': source_key,
                         'category': source_info.get('category', 'unknown'),
@@ -735,6 +738,77 @@ class NewsCollector:
             return ""
         except Exception as e:
             logger.error(f"❌ Помилка при отриманні повного тексту: {e}")
+            return ""
+
+    def extract_video_url(self, entry, article_url: str) -> str:
+        """Витягує URL відео з новини"""
+        try:
+            # Перевіряємо медіа контент на відео
+            if hasattr(entry, 'media_content') and entry.media_content:
+                for media in entry.media_content:
+                    if media.get('type', '').startswith('video/'):
+                        logger.info(f"📹 Знайдено відео в медіа контенті: {media['url'][:50]}...")
+                        return media['url']
+
+            # Перевіряємо опис на відео
+            if entry.get('summary'):
+                soup = BeautifulSoup(entry['summary'], 'html.parser')
+                
+                # Шукаємо відео теги
+                video = soup.find('video')
+                if video and video.get('src'):
+                    logger.info(f"📹 Знайдено відео в описі: {video['src'][:50]}...")
+                    return video['src']
+                
+                # Шукаємо iframe з відео
+                iframe = soup.find('iframe')
+                if iframe and iframe.get('src'):
+                    src = iframe['src']
+                    if any(platform in src.lower() for platform in ['youtube', 'vimeo', 'dailymotion']):
+                        logger.info(f"📹 Знайдено відео iframe: {src[:50]}...")
+                        return src
+
+            # Перевіряємо повний текст статті
+            if article_url:
+                try:
+                    response = self.session.get(article_url, timeout=15)
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.content, 'html.parser')
+                        
+                        # Шукаємо відео різними способами
+                        videos = []
+                        
+                        # 1. Шукаємо всі video теги
+                        video_tags = soup.find_all('video')
+                        for video in video_tags:
+                            src = video.get('src', '')
+                            if src and src.startswith('http'):
+                                videos.append(src)
+                        
+                        # 2. Шукаємо iframe з відео
+                        iframes = soup.find_all('iframe')
+                        for iframe in iframes:
+                            src = iframe.get('src', '')
+                            if src and any(platform in src.lower() for platform in ['youtube', 'vimeo', 'dailymotion']):
+                                videos.append(src)
+                        
+                        # 3. Шукаємо data-src атрибути
+                        for video in soup.find_all('video'):
+                            src = video.get('data-src') or video.get('data-video')
+                            if src and src.startswith('http'):
+                                videos.append(src)
+                        
+                        if videos:
+                            logger.info(f"📹 Знайдено відео в статті: {videos[0][:50]}...")
+                            return videos[0]
+                                
+                except Exception as e:
+                    logger.warning(f"Помилка при пошуку відео в статті: {e}")
+
+            return ""  # Повертаємо порожній рядок якщо відео не знайдено
+
+        except Exception as e:
+            logger.error(f"Помилка при витягуванні відео: {e}")
             return ""
 
     def extract_image_url(self, entry, article_url: str) -> str:

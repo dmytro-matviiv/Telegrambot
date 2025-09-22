@@ -56,7 +56,29 @@ class TelegramPublisher:
             logger.error(f"Помилка при завантаженні зображення: {e}")
             return None
 
-    # Видалено логіку завантаження відео
+    async def download_video(self, video_url: str) -> Optional[bytes]:
+        """Завантажує відео з URL"""
+        try:
+            if not video_url:
+                return None
+                
+            async with self.session.get(video_url, timeout=60) as response:
+                if response.status == 200:
+                    # Перевіряємо чи це дійсно відео
+                    content_type = response.headers.get('content-type', '')
+                    if 'video' in content_type.lower():
+                        video_data = await response.read()
+                        logger.info(f"📹 Завантажено відео: {len(video_data)} байт")
+                        return video_data
+                    else:
+                        logger.warning(f"⚠️ URL не є відео: {content_type}")
+                        return None
+                else:
+                    logger.warning(f"Не вдалося завантажити відео: {response.status}")
+                    return None
+        except Exception as e:
+            logger.error(f"Помилка при завантаженні відео: {e}")
+            return None
 
     def format_news_text(self, news_item: Dict) -> str:
         """Форматує текст новини для Telegram, роблячи його цікавим та інформативним"""
@@ -150,22 +172,41 @@ class TelegramPublisher:
         try:
             text = self.format_news_text(news_item)
             
-            # Якщо є відео — спробуємо відео
+            # Якщо є відео — обробляємо його
             video_url = news_item.get('video_url', '')
             if video_url:
-                video_data = await self.download_video(video_url)
-                if video_data:
+                # Перевіряємо чи це YouTube відео
+                if 'youtube.com' in video_url or 'youtu.be' in video_url:
+                    # YouTube відео публікуємо як посилання
                     try:
-                        await self.bot.send_video(
+                        # Додаємо посилання на відео до тексту
+                        video_text = f"{text}\n\n🎬 <a href='{video_url}'>Дивитися відео</a>"
+                        
+                        await self.bot.send_message(
                             chat_id=CHANNEL_ID,
-                            video=video_data,
-                            caption=text,
-                            parse_mode='HTML'
+                            text=video_text,
+                            parse_mode='HTML',
+                            disable_web_page_preview=False
                         )
-                        logger.info(f"Опубліковано новину з відео: {news_item.get('title', '')[:50]}...")
+                        logger.info(f"Опубліковано новину з YouTube відео: {news_item.get('title', '')[:50]}...")
                         return True
                     except Exception as e:
-                        logger.warning(f"Не вдалося опублікувати відео, спробуємо фото/текст: {e}")
+                        logger.warning(f"Не вдалося опублікувати YouTube відео: {e}")
+                else:
+                    # Спробуємо завантажити та опублікувати як файл
+                    video_data = await self.download_video(video_url)
+                    if video_data:
+                        try:
+                            await self.bot.send_video(
+                                chat_id=CHANNEL_ID,
+                                video=video_data,
+                                caption=text,
+                                parse_mode='HTML'
+                            )
+                            logger.info(f"Опубліковано новину з відео: {news_item.get('title', '')[:50]}...")
+                            return True
+                        except Exception as e:
+                            logger.warning(f"Не вдалося опублікувати відео, спробуємо фото/текст: {e}")
 
             # Публікуємо з зображенням
             image_url = news_item.get('image_url', '')
