@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from datetime import datetime
 from config import BOT_TOKEN, CHANNEL_ID
 from news_collector import NewsCollector
 from telegram_publisher import TelegramPublisher
@@ -64,6 +65,10 @@ class NewsBot:
         self.content_scheduler = ContentScheduler(self.publisher, self.news_collector)
         self.group_scheduler = GroupEngagementScheduler(self.publisher.bot)
         
+        # Захист від повторних публікацій
+        self.last_news_time = None
+        self.min_news_interval = 300  # 5 хвилин мінімум між новинами
+        
         # Накручування переглядів видалено
 
     async def start(self):
@@ -103,6 +108,13 @@ class NewsBot:
         """Запускає збір новин"""
         try:
             while True:
+                # Перевіряємо чи можна публікувати новини (захист від спаму)
+                current_time = datetime.now()
+                if self.last_news_time and (current_time - self.last_news_time).total_seconds() < self.min_news_interval:
+                    logging.info(f"⏳ Зачекаємо {self.min_news_interval - (current_time - self.last_news_time).total_seconds():.0f} сек перед наступною новиною")
+                    await asyncio.sleep(60)  # Перевіряємо кожну хвилину
+                    continue
+                
                 # Збираємо новини
                 all_news = self.news_collector.collect_all_news()
                 
@@ -116,7 +128,9 @@ class NewsBot:
                             # Позначаємо як опубліковану
                             news_id = f"{news['source_key']}_{news['id']}"
                             self.news_collector.mark_as_published(news_id, news['source_key'])
+                            self.last_news_time = current_time  # Запам'ятовуємо час публікації
                             logging.info(f"✅ Опубліковано новину: {news['title'][:50]}...")
+                            break  # Публікуємо тільки одну новину за раз
                         except Exception as e:
                             logging.error(f"❌ Помилка публікації новини: {e}")
                 else:

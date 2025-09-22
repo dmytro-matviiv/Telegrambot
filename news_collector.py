@@ -177,6 +177,43 @@ class NewsCollector:
         text = title + ' ' + summary
         return any(c in ukr_letters for c in text)
     
+    def is_similar_news(self, news1: dict, news2: dict) -> bool:
+        """Перевіряє чи новини схожі (для уникнення дублювання)"""
+        try:
+            title1 = news1.get('title', '').lower()
+            title2 = news2.get('title', '').lower()
+            
+            # Якщо заголовки ідентичні
+            if title1 == title2:
+                return True
+            
+            # Якщо один заголовок містить інший
+            if title1 in title2 or title2 in title1:
+                return True
+            
+            # Перевіряємо ключові слова
+            keywords1 = set(title1.split())
+            keywords2 = set(title2.split())
+            
+            # Якщо більше 70% ключових слів співпадають
+            if len(keywords1) > 0 and len(keywords2) > 0:
+                common_words = keywords1.intersection(keywords2)
+                similarity = len(common_words) / max(len(keywords1), len(keywords2))
+                if similarity > 0.7:
+                    return True
+            
+            # Перевіряємо посилання
+            link1 = news1.get('link', '')
+            link2 = news2.get('link', '')
+            if link1 == link2:
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.warning(f"Помилка при перевірці схожості новин: {e}")
+            return False
+
     def is_food_related_content(self, title: str, summary: str, full_text: str = '') -> bool:
         """Перевіряє чи новина стосується приготування їжі, рецептів або кулінарії"""
         # Об'єднуємо весь текст для перевірки
@@ -528,6 +565,24 @@ class NewsCollector:
             text = re.sub(r'[А-ЯІЇЄҐ][^.]*\/\s*Фото\s+[^.]*', '', text)
             text = re.sub(r'Фото\s+[^.]*', '', text, flags=re.IGNORECASE)
             
+            # Видаляємо зайві фрази та слова (розширений список)
+            redundant_phrases = [
+                'повний текст новини', 'читати далі', 'детальніше читайте', 'більше інформації',
+                'продовження читайте', 'далі читайте', 'читати повністю', 'повний текст',
+                'детальніше', 'більше', 'далі', 'продовження', 'що відбувається', 'що сталося',
+                'що трапилося', 'подробиці', 'деталі події', 'дивіться також', 'читайте також',
+                'також читайте', 'що відомо', 'що відомо на цей момент', 'на цей момент',
+                'повідомляють', 'пишуть', 'інформує', 'повідомляє', 'зазначає', 'відзначає',
+                'про це повідомили', 'про це інформували', 'про це зазначають', 'про це відзначають'
+            ]
+            
+            for phrase in redundant_phrases:
+                text = re.sub(rf'\b{re.escape(phrase)}\b', '', text, flags=re.IGNORECASE)
+            
+            # Видаляємо питання в кінці тексту
+            text = re.sub(r'\s*[?]\s*$', '', text)
+            text = re.sub(r'\s*[?]\s*[А-ЯІЇЄҐ].*$', '', text)
+            
             # Видаляємо повторення речень
             sentences = text.split('. ')
             unique_sentences = []
@@ -536,35 +591,11 @@ class NewsCollector:
             for sentence in sentences:
                 # Нормалізуємо речення для порівняння
                 normalized = sentence.lower().strip()
-                if normalized and normalized not in seen_sentences:
+                if normalized and normalized not in seen_sentences and len(normalized) > 10:
                     unique_sentences.append(sentence.strip())
                     seen_sentences.add(normalized)
             
             text = '. '.join(unique_sentences)
-            
-            # Видаляємо зайві фрази та слова
-            redundant_phrases = [
-                'повний текст новини',
-                'читати далі',
-                'детальніше читайте',
-                'більше інформації',
-                'продовження читайте',
-                'далі читайте',
-                'читати повністю',
-                'повний текст',
-                'детальніше',
-                'більше',
-                'далі',
-                'продовження',
-                'що відбувається',
-                'що сталося',
-                'що трапилося',
-                'подробиці',
-                'деталі події'
-            ]
-            
-            for phrase in redundant_phrases:
-                text = text.replace(phrase, '').replace(phrase.capitalize(), '')
             
             # Видаляємо зайві пробіли та символи
             text = ' '.join(text.split())
@@ -998,12 +1029,24 @@ class NewsCollector:
             random.shuffle(all_news)
             logger.info(f"🎲 Перемішано {len(all_news)} новин у випадковому порядку")
         
-        # Фільтруємо вже опубліковані новини
+        # Фільтруємо вже опубліковані новини та дублікати
         new_news = []
+        seen_news = []  # Для дедуплікації
+        
         for news in all_news:
             news_id = f"{news['source_key']}_{news['id']}"
             if news_id not in self.published_news:
-                new_news.append(news)
+                # Перевіряємо чи це не дублікат
+                is_duplicate = False
+                for seen in seen_news:
+                    if self.is_similar_news(news, seen):
+                        logger.info(f"🚫 Пропускаємо дублікат: {news['title'][:50]}... (схоже на {seen['title'][:50]}...)")
+                        is_duplicate = True
+                        break
+                
+                if not is_duplicate:
+                    new_news.append(news)
+                    seen_news.append(news)
         
         if new_news:
             logger.info(f"📰 Знайдено {len(new_news)} нових новин з різних джерел")
