@@ -130,6 +130,9 @@ class TelegramPublisher:
         if link:
             text += f"\n🔗 <a href='{link}'>Детальніше</a>"
         
+        # Додаємо підпис каналу
+        text += f"\n\n<a href='https://t.me/newstime20'>🇺🇦 News Globalno</a> | <a href='https://t.me/newstime20'>Підписатись</a>"
+        
         return text
 
     def clean_html(self, text: str) -> str:
