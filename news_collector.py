@@ -451,17 +451,21 @@ class NewsCollector:
             
             # Видаляємо заголовок з опису та повного тексту, якщо він там є
             if title:
-                # Видаляємо заголовок з початку опису
-                if summary.lower().startswith(title.lower()):
+                # Видаляємо заголовок з початку опису (навіть часткові збіги)
+                title_words = title.lower().split()[:5]  # Перші 5 слів заголовка
+                summary_lower = summary.lower()
+                
+                if summary_lower.startswith(title.lower()):
                     summary = summary[len(title):].strip()
                     # Видаляємо зайві двокрапки та тире
-                    if summary.startswith((':', '-', '—', '–')):
+                    while summary and summary[0] in ':-—–.,;':
                         summary = summary[1:].strip()
                 
                 # Видаляємо заголовок з початку повного тексту
-                if full_text.lower().startswith(title.lower()):
+                full_text_lower = full_text.lower()
+                if full_text_lower.startswith(title.lower()):
                     full_text = full_text[len(title):].strip()
-                    if full_text.startswith((':', '-', '—', '–')):
+                    while full_text and full_text[0] in ':-—–.,;':
                         full_text = full_text[1:].strip()
             
             # Додаткова очистка від метаданих на початку тексту
@@ -474,6 +478,20 @@ class NewsCollector:
             # Видаляємо "Основні тези" з початку
             summary = re.sub(r'^Основні тези\s*', '', summary, flags=re.IGNORECASE)
             full_text = re.sub(r'^Основні тези\s*', '', full_text, flags=re.IGNORECASE)
+            
+            # Видаляємо повторювані речення на початку (наприклад, якщо перше речення повторюється двічі)
+            def remove_duplicate_start(text):
+                if not text or len(text) < 50:
+                    return text
+                # Перевіряємо перші 100 символів на повторення
+                for length in range(50, min(150, len(text)//2)):
+                    start_part = text[:length]
+                    if text[length:length*2].startswith(start_part):
+                        return text[length:].strip()
+                return text
+            
+            summary = remove_duplicate_start(summary)
+            full_text = remove_duplicate_start(full_text)
             
             # Видаляємо повторення між summary та full_text
             if summary and full_text:
@@ -504,11 +522,11 @@ class NewsCollector:
             else:
                 return ""
             
-            # Обмежуємо довжину до 600 символів для лаконічності
-            if len(description) > 600:
-                # Шукаємо кінець речення близько до 600 символів
-                cut_point = 600
-                for i in range(550, 650):
+            # Обмежуємо довжину до 350 символів для лаконічності та конкретики
+            if len(description) > 350:
+                # Шукаємо кінець речення близько до 350 символів
+                cut_point = 350
+                for i in range(300, 400):
                     if i < len(description):
                         if description[i] in '.!?':
                             cut_point = i + 1
@@ -516,7 +534,7 @@ class NewsCollector:
                 
                 description = description[:cut_point].strip()
                 
-                # Додаємо три крапки, якщо текст обрізано
+                # Не додаємо три крапки, якщо речення завершене
                 if not description.endswith(('.', '!', '?')):
                     description += "..."
             
@@ -541,6 +559,25 @@ class NewsCollector:
             # Видаляємо метадані (дата, час, автор)
             import re
             
+            # Видаляємо посилання на джерела фото та зображень
+            text = re.sub(r'\/\s*\.?depositphotos\.com', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\/\s*Фото:?\s*[^.]*\.', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\/\s*фото\s*[^.]*', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'Фото\s*:?\s*[^.]*\.', '', text, flags=re.IGNORECASE)
+            
+            # Видаляємо вставлення про джерела (CNN, BBC, Reuters тощо)
+            text = re.sub(r',\s*(CNN|BBC|Reuters|Associated Press|AFP|УНІАН|ТСН|Українська правда)[\s,.]*', '. ', text, flags=re.IGNORECASE)
+            text = re.sub(r'\s+(CNN|BBC|Reuters|Associated Press|AFP)\.', '.', text, flags=re.IGNORECASE)
+            
+            # Видаляємо "Відео дня" та подібні вставлення
+            text = re.sub(r'Відео дня\s+[А-ЯІЇЄҐ][^.]*\.?', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'Новини дня\s+[А-ЯІЇЄҐ][^.]*\.?', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'Читайте на.*?\.', '', text, flags=re.IGNORECASE)
+            
+            # Видаляємо незавершені речення (обрізані тексти)
+            text = re.sub(r'\s+[а-яіїєґ]{1,2}\s*\.?\s*$', '.', text, flags=re.IGNORECASE)
+            text = re.sub(r'\s+[а-яіїєґ]{1,2}\s*$', '', text, flags=re.IGNORECASE)
+            
             # Видаляємо дати та час
             text = re.sub(r'\d{1,2}\s+(січня|лютого|березня|квітня|травня|червня|липня|серпня|вересня|жовтня|листопада|грудня),?\s+\d{1,2}:\d{2}', '', text, flags=re.IGNORECASE)
             text = re.sub(r'\d{1,2}\s+вересня,?\s+\d{1,2}:\d{2}', '', text, flags=re.IGNORECASE)
@@ -561,8 +598,12 @@ class NewsCollector:
             for pattern in bio_patterns:
                 text = re.sub(pattern, '', text, flags=re.IGNORECASE)
             
-            # Видаляємо "Основні тези"
-            text = re.sub(r'Основні тези\s*', '', text, flags=re.IGNORECASE)
+            # Видаляємо "Основні тези", "Зазначається", "Повідомляється"
+            text = re.sub(r'Основні тези[:\s]*', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'^Зазначається,\s+що\s+', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'^Повідомляється,\s+що\s+', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\.\s*Зазначається,\s+що\s+', '. ', text, flags=re.IGNORECASE)
+            text = re.sub(r'\.\s*Повідомляється,\s+що\s+', '. ', text, flags=re.IGNORECASE)
             
             # Видаляємо описи фото
             text = re.sub(r'[А-ЯІЇЄҐ][^.]*\/\s*Фото\s+[^.]*', '', text)
@@ -572,11 +613,11 @@ class NewsCollector:
             redundant_phrases = [
                 'повний текст новини', 'читати далі', 'детальніше читайте', 'більше інформації',
                 'продовження читайте', 'далі читайте', 'читати повністю', 'повний текст',
-                'детальніше', 'більше', 'далі', 'продовження', 'що відбувається', 'що сталося',
-                'що трапилося', 'подробиці', 'деталі події', 'дивіться також', 'читайте також',
-                'також читайте', 'що відомо', 'що відомо на цей момент', 'на цей момент',
-                'повідомляють', 'пишуть', 'інформує', 'повідомляє', 'зазначає', 'відзначає',
-                'про це повідомили', 'про це інформували', 'про це зазначають', 'про це відзначають'
+                'що відбувається', 'що сталося', 'що трапилося', 'подробиці', 'деталі події', 
+                'дивіться також', 'читайте також', 'також читайте', 'що відомо', 
+                'що відомо на цей момент', 'на цей момент',
+                'про це повідомили', 'про це інформували', 'про це зазначають', 'про це відзначають',
+                'як повідомляє', 'як повідомляють', 'як пише', 'як пишуть'
             ]
             
             for phrase in redundant_phrases:
@@ -594,7 +635,7 @@ class NewsCollector:
             for sentence in sentences:
                 # Нормалізуємо речення для порівняння
                 normalized = sentence.lower().strip()
-                if normalized and normalized not in seen_sentences and len(normalized) > 10:
+                if normalized and normalized not in seen_sentences and len(normalized) > 15:
                     unique_sentences.append(sentence.strip())
                     seen_sentences.add(normalized)
             
@@ -602,7 +643,7 @@ class NewsCollector:
             
             # Видаляємо зайві пробіли та символи
             text = ' '.join(text.split())
-            text = text.replace('..', '.').replace('...', '...')
+            text = text.replace('..', '.').replace('....', '...')
             
             # Видаляємо повторення слів у реченнях
             words = text.split()
@@ -619,6 +660,9 @@ class NewsCollector:
             # Видаляємо порожні речення та зайві пробіли
             text = re.sub(r'\s+', ' ', text)
             text = re.sub(r'\.\s*\.', '.', text)
+            
+            # Прибираємо пробіли перед крапками та комами
+            text = re.sub(r'\s+([.,!?])', r'\1', text)
             
             return text.strip()
             

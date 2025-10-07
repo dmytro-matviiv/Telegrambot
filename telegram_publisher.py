@@ -100,7 +100,7 @@ class TelegramPublisher:
         category_emoji = category_emojis.get(category, '📰')
         
         # Встановлюємо ліміт для лаконічної інформації в каналі
-        max_length = 1200  # Зменшуємо для більшої лаконічності
+        max_length = 700  # Коротко та конкретно
         
         # Формуємо заголовок з емодзі
         text = f"{category_emoji} <b>{title}</b>\n\n"
@@ -112,7 +112,7 @@ class TelegramPublisher:
             if len(description) > available_length:
                 # Шукаємо кінець речення близько до ліміту
                 cut_point = available_length
-                for i in range(available_length - 80, available_length + 40):
+                for i in range(available_length - 60, available_length + 30):
                     if i < len(description):
                         if description[i] in '.!?':
                             cut_point = i + 1
